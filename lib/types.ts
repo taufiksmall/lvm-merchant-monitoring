@@ -226,7 +226,7 @@ export type RegionSummary = {
   cabang_tercapai: number;
   cabang_belum: number;
   cabang: RegionBranch[];
-  area: { nama_area: string; cabang: number; total_merchant: number; merchant_usak: number; rasio_usak: number; gap_usak_50: number; tercapai: boolean }[];
+  area: { nama_area: string; kode_area?: string; cabang: number; total_merchant: number; merchant_usak: number; rasio_usak: number; gap_usak_50: number; tercapai: boolean }[];
   warnings: Warning[];
   data: { diperbarui: string; snapshot_date: string };
 };

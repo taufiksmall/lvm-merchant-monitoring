@@ -34,6 +34,7 @@ export function RegionView() {
   const [maxR, setMaxR] = useState("");
   const [q, setQ] = useState("");
   const [area, setArea] = useState("");
+  const [order, setOrder] = useState<"kode" | "rasio" | "gap">("kode");
 
   const rows = useMemo(() => {
     if (!data) return [];
@@ -41,12 +42,17 @@ export function RegionView() {
     const lo = minR.trim() === "" ? null : Number(minR.replace(",", "."));
     const hi = maxR.trim() === "" ? null : Number(maxR.replace(",", "."));
     // Rentang rasio [dari, sampai): batas bawah termasuk, batas atas tidak.
-    return data.cabang.filter((b) =>
+    const list = data.cabang.filter((b) =>
       (!area || b.nama_area === area) &&
       (lo === null || Number.isNaN(lo) || b.rasio_usak >= lo) &&
       (hi === null || Number.isNaN(hi) || b.rasio_usak < hi) &&
       (!term || `${b.nama_cabang} ${b.kode_cabang} ${b.nama_area}`.toLowerCase().includes(term)));
-  }, [data, minR, maxR, q, area]);
+    const byKode = (a: RegionBranch, b: RegionBranch) => a.kode_cabang.localeCompare(b.kode_cabang, undefined, { numeric: true });
+    return list.sort((a, b) =>
+      order === "rasio" ? a.rasio_usak - b.rasio_usak || byKode(a, b)
+      : order === "gap" ? b.gap_usak_50 - a.gap_usak_50 || byKode(a, b)
+      : byKode(a, b));
+  }, [data, minR, maxR, q, area, order]);
 
   if (!data && error) return <ErrorState message={error.message} onRetry={reload} />;
   if (!data) {
@@ -110,7 +116,7 @@ export function RegionView() {
                   className={cx("col-span-2 truncate text-left hover:underline sm:col-span-1", area === a.nama_area ? "font-semibold text-accent-ink" : "text-ink")}
                   title={`Filter tabel cabang: ${a.nama_area}`}
                 >
-                  {a.nama_area} <span className="text-xs text-muted">· {fmtNumber(a.cabang)} cabang</span>
+                  {a.nama_area} <span className="text-xs text-muted">· {a.kode_area ? `${a.kode_area} · ` : ""}{fmtNumber(a.cabang)} cabang</span>
                 </button>
                 <RatioBar value={a.rasio_usak} target={u.target_ratio_persen} />
                 <span className="text-right text-ink">{fmtPercent(a.rasio_usak, { ceiling: u.target_ratio_persen })}</span>
@@ -120,7 +126,7 @@ export function RegionView() {
         </Card>
       )}
 
-      <Card title="Cabang menurut rasio USAK" subtitle="Urut dari rasio terendah · klik cabang untuk melihat merchant yang perlu di-follow-up" flush>
+      <Card title="Cabang menurut rasio USAK" subtitle={`Urut ${order === "kode" ? "kode cabang" : order === "rasio" ? "rasio terendah" : "gap terbesar"} · klik cabang untuk melihat merchant yang perlu di-follow-up`} flush>
         <div className="space-y-2 border-b border-line px-4 py-3">
           <div className="flex flex-wrap items-end gap-2">
             <div className="relative min-w-0 flex-1 basis-56">
@@ -146,6 +152,14 @@ export function RegionView() {
                 </select>
               </div>
             )}
+            <div className="w-full sm:w-44">
+              <label htmlFor="urut-cabang" className={labelCls}>Urutkan</label>
+              <select id="urut-cabang" value={order} onChange={(e) => setOrder(e.target.value as typeof order)} className={cx(fieldCls, "border-line-strong")}>
+                <option value="kode">Kode cabang</option>
+                <option value="rasio">Rasio terendah</option>
+                <option value="gap">Gap terbesar</option>
+              </select>
+            </div>
             <RatioFilter minR={minR} maxR={maxR} setMinR={setMinR} setMaxR={setMaxR} target={u.target_ratio_persen} />
           </div>
           <p className="text-xs text-muted">Menampilkan {fmtNumber(rows.length)} dari {fmtNumber(data.cabang_total)} cabang</p>

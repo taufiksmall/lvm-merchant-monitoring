@@ -112,11 +112,8 @@ function regionSummary_(ctx) {
       tercapai: ind.tercapai,
     };
   });
-  rows.sort(function (a, b) {
-    if (a.rasio_usak !== b.rasio_usak) return a.rasio_usak - b.rasio_usak;
-    if (a.gap_usak_50 !== b.gap_usak_50) return b.gap_usak_50 - a.gap_usak_50;
-    return a.nama_cabang < b.nama_cabang ? -1 : (a.nama_cabang > b.nama_cabang ? 1 : 0);
-  });
+  // Urutan bawaan: kode cabang (angka bila numerik, selain itu teks).
+  rows.sort(function (a, b) { return compareCode_(a.kode_cabang, b.kode_cabang); });
 
   var total = 0, usak = 0, dicek = 0, byArea = {};
   scope.branches.forEach(function (b) {
@@ -127,10 +124,15 @@ function regionSummary_(ctx) {
   var agg = computeUsakIndicators_(total, usak);
   agg.configured = cfg.usak.configured;
   agg.perlu_dicek = dicek;
-  var areas = Object.keys(byArea).sort().map(function (k) {
+  var kodeAreaOf = {};
+  loadWilayah_().forEach(function (w) { kodeAreaOf[normKey_(w.area)] = w.kode_area; });
+  var areas = Object.keys(byArea).map(function (k) {
     var a = byArea[k], ind = computeUsakIndicators_(a.total_merchant, a.merchant_usak);
+    a.kode_area = kodeAreaOf[normKey_(a.nama_area)] || '';
     a.rasio_usak = ind.rasio_usak; a.gap_usak_50 = ind.gap_usak_50; a.tercapai = ind.tercapai;
     return a;
+  }).sort(function (a, b) {
+    return compareCode_(a.kode_area, b.kode_area) || compareCode_(a.nama_area, b.nama_area);
   });
   var stamp = '';
   scope.branches.forEach(function (b) { if (b.diperbarui > stamp) stamp = b.diperbarui; });
@@ -150,6 +152,14 @@ function regionSummary_(ctx) {
     warnings: warnings,
     data: { diperbarui: stamp, snapshot_date: cfg.settings.DATA_SNAPSHOT_DATE || '' },
   };
+}
+
+/** Bandingkan kode: dua-duanya angka -> urut numerik; selain itu urut teks tanpa beda huruf. */
+function compareCode_(x, y) {
+  x = String(x || ''); y = String(y || '');
+  if (/^\d+$/.test(x) && /^\d+$/.test(y)) return Number(x) - Number(y);
+  var a = x.toLowerCase(), b = y.toLowerCase();
+  return a < b ? -1 : (a > b ? 1 : 0);
 }
 
 var REGION_SEARCH_LIMIT = 40;

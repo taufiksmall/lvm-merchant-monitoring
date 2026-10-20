@@ -951,7 +951,10 @@ describe('akun area dan region', () => {
     const t = call('auth.login', { kode_cabang: 'REG-JABAR', password: 'PolaRegion-Uji1' }).data.token;
     const sum = call('region.summary', {}, t).data;
     assert.equal(sum.cakupan.jenis, 'region');
-    assert.deepEqual(sum.cabang.map((c) => c.kode_cabang), ['0201', '0101', '0102']); // rasio naik: 25%, 42,6%, 55%
+    assert.deepEqual(sum.cabang.map((c) => c.kode_cabang), ['0101', '0102', '0201']); // urut kode cabang
+    const kodeArea = sum.area.map((a) => a.kode_area);
+    assert.ok(kodeArea.every(Boolean), 'setiap area membawa kode_area');
+    assert.deepEqual(kodeArea, [...kodeArea].sort(), 'area urut kode area');
     assert.equal(sum.area.length, 2);
     // akun cabang ditolak dan parameter kode_cabang diabaikan
     const petugas = login('0101', PW.petugas0101);
