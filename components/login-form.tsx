@@ -55,9 +55,9 @@ export function LoginForm({ next, notice, noticeTone }: { next: string; notice?:
     }
   }
 
-  const inputCls = "h-11 w-full rounded-lg border bg-surface px-3 text-sm text-ink placeholder:text-muted";
+  const inputCls = "h-10 w-full rounded-md border bg-surface px-3 text-sm text-ink placeholder:text-muted";
   return (
-    <form onSubmit={onSubmit} noValidate className="space-y-4 rounded-xl border border-line bg-surface p-5 sm:p-6">
+    <form onSubmit={onSubmit} noValidate className="space-y-4 rounded-md border border-line bg-surface p-5 sm:p-6">
       {notice && !errors.form && <Alert tone={noticeTone}>{notice}</Alert>}
       {errors.form && <Alert tone="error">{errors.form}</Alert>}
 
@@ -106,7 +106,7 @@ export function LoginForm({ next, notice, noticeTone }: { next: string; notice?:
             onClick={() => setShowPassword((v) => !v)}
             aria-label={showPassword ? "Sembunyikan kata sandi" : "Tampilkan kata sandi"}
             aria-pressed={showPassword}
-            className="absolute inset-y-0 right-0 flex w-11 items-center justify-center rounded-r-lg text-ink-2 hover:text-ink"
+            className="absolute inset-y-0 right-0 flex w-10 items-center justify-center rounded-r-md text-ink-2 hover:text-ink"
           >
             {showPassword ? <EyeOff aria-hidden className="size-4" /> : <Eye aria-hidden className="size-4" />}
           </button>
@@ -114,10 +114,10 @@ export function LoginForm({ next, notice, noticeTone }: { next: string; notice?:
         {errors.password && <p id="password_error" className="mt-1.5 text-xs text-critical-ink">{errors.password}</p>}
       </div>
 
-      <Button type="submit" loading={submitting} className="w-full">
+      <Button type="submit" loading={submitting} className="h-10 w-full">
         {submitting ? "Memeriksa…" : "Masuk"}
       </Button>
-      <p className="text-center text-xs text-ink-2">Lupa kata sandi? Hubungi administrator cabang.</p>
+      <p className="text-center text-xs text-muted">Lupa kata sandi? Hubungi administrator.</p>
     </form>
   );
 }

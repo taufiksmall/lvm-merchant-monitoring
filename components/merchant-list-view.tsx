@@ -9,7 +9,7 @@ import { fmtCompact, fmtNumber, fmtRupiah } from "@/lib/format";
 import { useApi } from "@/lib/client/use-api";
 import type { FilterOptions, MerchantList, MerchantListItem, Option } from "@/lib/types";
 import { FollowUpCell, PriorityBadge, UsakBadge } from "./badges";
-import { Alert, Button, Card, EmptyState, ErrorState, PageHeader, Skeleton, cx } from "./ui";
+import { Alert, Button, Card, EmptyState, ErrorState, PageHeader, Skeleton, cx, fieldCls, labelCls, tableCls } from "./ui";
 
 const PAGE_SIZES = ["10", "25", "50", "100"];
 const FILTER_KEYS = ["kategori_usak", "follow_up", "status_follow_up", ...FILTER_COLUMNS] as const;
@@ -141,8 +141,8 @@ export function MerchantListView({ branch }: { branch?: string } = {}) {
 
 function ListSkeleton() {
   return (
-    <div className="space-y-2" aria-busy="true" aria-label="Memuat daftar merchant">
-      {Array.from({ length: 8 }, (_, i) => <Skeleton key={i} className="h-14" />)}
+    <div className="space-y-1.5" aria-busy="true" aria-label="Memuat daftar merchant">
+      {Array.from({ length: 8 }, (_, i) => <Skeleton key={i} className="h-12" />)}
     </div>
   );
 }
@@ -157,12 +157,12 @@ function Select({ id, label, value, onChange, options, allLabel = "Semua" }: {
 }) {
   return (
     <div className="min-w-0">
-      <label htmlFor={id} className="mb-1 block text-xs font-medium text-ink-2">{label}</label>
+      <label htmlFor={id} className={labelCls}>{label}</label>
       <select
         id={id}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className={cx("h-9 w-full rounded-lg border bg-surface px-2 text-sm text-ink", value ? "border-accent" : "border-line-strong")}
+        className={cx(fieldCls, "px-2", value ? "border-accent bg-accent-wash/40" : "border-line-strong")}
       >
         <option value="">{allLabel}</option>
         {options.map((o) => (
@@ -193,11 +193,11 @@ function Filters({ q, setQ, searchHint, options, optionsError, searchParams, upd
   const get = (k: string) => searchParams.get(k) ?? "";
   const colOptions = (col: string) => options?.columns[col] ?? [];
   return (
-    <div className="rounded-xl border border-line bg-surface p-3 sm:p-4">
+    <div className="rounded-md border border-line bg-surface px-4 py-3">
       <div className="flex flex-wrap items-end gap-2">
         <div className="relative min-w-0 flex-1 basis-64">
           <label htmlFor="q" className="sr-only">Pencarian</label>
-          <Search aria-hidden className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" />
+          <Search aria-hidden className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted" />
           <input
             id="q"
             type="search"
@@ -205,31 +205,32 @@ function Filters({ q, setQ, searchHint, options, optionsError, searchParams, upd
             onChange={(e) => setQ(e.target.value)}
             maxLength={100}
             placeholder={searchHint}
-            className="h-10 w-full rounded-lg border border-line-strong bg-surface pl-9 pr-3 text-sm text-ink placeholder:text-muted"
+            className={cx(fieldCls, "border-line-strong pl-8")}
           />
         </div>
         <div className="flex w-full items-end gap-2 sm:w-auto">
           <div className="min-w-0 flex-1 sm:flex-none">
-            <label htmlFor="sort" className="mb-1 block text-xs font-medium text-ink-2">Urutkan</label>
+            <label htmlFor="sort" className="sr-only">Urutkan</label>
             <select
               id="sort"
               value={sort}
               onChange={(e) => update({ sort: e.target.value, dir: SORT_OPTIONS.find((o) => o.value === e.target.value)?.defaultDir ?? "desc" })}
-              className="h-10 w-full rounded-lg border border-line-strong bg-surface px-2 text-sm text-ink"
+              className={cx(fieldCls, "border-line-strong px-2")}
+              title="Urutkan"
             >
-              {SORT_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              {SORT_OPTIONS.map((o) => <option key={o.value} value={o.value}>Urut: {o.label}</option>)}
             </select>
           </div>
           <Button
             variant="secondary"
-            className="h-10 px-3"
+            className="px-2.5"
             onClick={() => update({ dir: dir === "asc" ? "desc" : "asc" })}
             aria-label={dir === "asc" ? "Urutan naik, ubah ke turun" : "Urutan turun, ubah ke naik"}
             title={dir === "asc" ? "Naik (A–Z / kecil–besar)" : "Turun (Z–A / besar–kecil)"}
           >
             {dir === "asc" ? <ArrowUp aria-hidden className="size-4" /> : <ArrowDown aria-hidden className="size-4" />}
           </Button>
-          <Button variant={activeFilters ? "primary" : "secondary"} className="h-10 px-3" onClick={() => setOpen((v) => !v)} aria-expanded={open} aria-controls="filter-panel">
+          <Button variant="secondary" className={cx("px-3", activeFilters > 0 && "border-accent text-accent-ink")} onClick={() => setOpen((v) => !v)} aria-expanded={open} aria-controls="filter-panel">
             <SlidersHorizontal aria-hidden className="size-4" />
             Filter{activeFilters > 0 && ` (${activeFilters})`}
           </Button>
@@ -365,10 +366,10 @@ function MerchantTable({ items, today, sort, dir, onSort, configured, source, br
   // grading_usak hanya tampil bila menjadi kolom sumber USAK.
   const columns = COLUMNS.filter((c) => c.key !== "grading_usak" || source === "grading_usak");
   return (
-    <div className="hidden overflow-x-auto rounded-xl border border-line bg-surface md:block">
-      <table className="w-full text-sm">
+    <div className="hidden overflow-x-auto rounded-md border border-line bg-surface md:block">
+      <table className={tableCls.table}>
         <thead>
-          <tr className="border-b border-line text-left text-xs text-ink-2">
+          <tr className={tableCls.headRow}>
             {columns.map((c) => {
               const active = c.sort === sort;
               return (
@@ -376,7 +377,7 @@ function MerchantTable({ items, today, sort, dir, onSort, configured, source, br
                   key={c.key}
                   scope="col"
                   aria-sort={active ? (dir === "asc" ? "ascending" : "descending") : undefined}
-                  className={cx("whitespace-nowrap px-3 py-2.5 font-medium", c.align === "right" && "text-right", c.className)}
+                  className={cx(tableCls.th, c.align === "right" && "text-right", c.className, c.key === "merchant" && "bg-surface-2")}
                 >
                   {c.sort ? (
                     <button type="button" onClick={() => onSort(c.sort!)} className={cx("inline-flex items-center gap-1 hover:text-ink", active && "text-ink")}>
@@ -391,13 +392,14 @@ function MerchantTable({ items, today, sort, dir, onSort, configured, source, br
         </thead>
         <tbody>
           {items.map((m) => (
-            <tr key={m.store_id} className="group border-b border-line last:border-0 hover:bg-surface-2">
+            <tr key={m.store_id} className={cx("group", tableCls.row)}>
               {columns.map((c) => (
                 <td
                   key={c.key}
                   className={cx(
-                    "px-3 py-2.5 align-top text-ink",
-                    c.align === "right" && "text-right tabular whitespace-nowrap",
+                    tableCls.td,
+                    "align-top text-[13px] text-ink",
+                    c.align === "right" && "text-right whitespace-nowrap",
                     c.className,
                     c.key === "merchant" && "group-hover:bg-surface-2 max-w-64",
                   )}
@@ -415,10 +417,10 @@ function MerchantTable({ items, today, sort, dir, onSort, configured, source, br
 
 function MerchantCards({ items, today, configured, source, branch }: { items: MerchantListItem[]; today: string; configured: boolean; source: string; branch?: string }) {
   return (
-    <ul className="space-y-2 md:hidden">
+    <ul className="divide-y divide-line overflow-hidden rounded-md border border-line bg-surface md:hidden">
       {items.map((m) => (
         <li key={m.store_id}>
-          <Link href={detailHref(m.store_id, branch)} className="block rounded-xl border border-line bg-surface p-3 active:bg-surface-2">
+          <Link href={detailHref(m.store_id, branch)} className="block px-4 py-3 active:bg-surface-2">
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
                 <p className="truncate font-medium text-ink">{m.store_name || m.mid_static || m.store_id}</p>
@@ -439,8 +441,8 @@ function MerchantCards({ items, today, configured, source, branch }: { items: Me
                 ["SV 30 hr", fmtCompact(m.sv_30_days)],
               ].map(([k, v]) => (
                 <div key={k} className="min-w-0">
-                  <dt className="truncate text-ink-2">{k}</dt>
-                  <dd className="truncate font-medium text-ink tabular">{v}</dd>
+                  <dt className="truncate text-muted">{k}</dt>
+                  <dd className="truncate font-medium text-ink">{v}</dd>
                 </div>
               ))}
             </dl>
@@ -459,23 +461,23 @@ function Pagination({ data, update }: { data: MerchantList; update: (c: Record<s
   const end = Math.min(data.total, data.page * data.page_size);
   const pages = data.total_pages;
   return (
-    <nav aria-label="Navigasi halaman" className="mt-3 flex flex-wrap items-center justify-between gap-3 text-sm text-ink-2">
-      <p className="tabular">Menampilkan {fmtNumber(start)}–{fmtNumber(end)} dari {fmtNumber(data.total)}</p>
+    <nav aria-label="Navigasi halaman" className="mt-3 flex flex-wrap items-center justify-between gap-3 text-[13px] text-ink-2">
+      <p>Menampilkan {fmtNumber(start)}–{fmtNumber(end)} dari {fmtNumber(data.total)}</p>
       <div className="flex items-center gap-2">
         <label htmlFor="page_size" className="sr-only">Baris per halaman</label>
         <select
           id="page_size"
           value={String(data.page_size)}
           onChange={(e) => update({ page_size: e.target.value })}
-          className="h-9 rounded-lg border border-line-strong bg-surface px-2 text-sm text-ink"
+          className="h-8 rounded-md border border-line-strong bg-surface px-2 text-[13px] text-ink"
         >
           {PAGE_SIZES.map((s) => <option key={s} value={s}>{s} / halaman</option>)}
         </select>
-        <Button variant="secondary" size="sm" className="h-9" disabled={data.page <= 1} onClick={() => update({ page: String(data.page - 1) }, false)} aria-label="Halaman sebelumnya">
+        <Button variant="secondary" size="sm" className="px-2" disabled={data.page <= 1} onClick={() => update({ page: String(data.page - 1) }, false)} aria-label="Halaman sebelumnya">
           <ChevronLeft aria-hidden className="size-4" />
         </Button>
         <span className="tabular">{data.page} / {pages}</span>
-        <Button variant="secondary" size="sm" className="h-9" disabled={data.page >= pages} onClick={() => update({ page: String(data.page + 1) }, false)} aria-label="Halaman berikutnya">
+        <Button variant="secondary" size="sm" className="px-2" disabled={data.page >= pages} onClick={() => update({ page: String(data.page + 1) }, false)} aria-label="Halaman berikutnya">
           <ChevronRight aria-hidden className="size-4" />
         </Button>
       </div>

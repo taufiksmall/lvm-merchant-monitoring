@@ -1,6 +1,6 @@
 "use client";
 
-import { LayoutDashboard, LogOut, Store } from "lucide-react";
+import { LogOut } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState, type ReactNode } from "react";
@@ -11,14 +11,14 @@ import { Logo } from "./logo";
 import { cx } from "./ui";
 
 const NAV = [
-  { href: "/", label: "Dashboard", icon: LayoutDashboard, match: (p: string) => p === "/" },
-  { href: "/merchants", label: "Merchant", icon: Store, match: (p: string) => p.startsWith("/merchants") },
+  { href: "/", label: "Dashboard", match: (p: string) => p === "/" },
+  { href: "/merchants", label: "Merchant", match: (p: string) => p.startsWith("/merchants") },
 ];
 
 const ROLE_LABELS: Record<string, string> = { petugas: "Petugas", supervisor: "Supervisor", viewer: "Viewer", area: "Area", region: "Region" };
 
 const NAV_PEMANTAUAN = [
-  { href: "/", label: "Pemantauan", icon: LayoutDashboard, match: (p: string) => p === "/" || p.startsWith("/pemantauan") || p.startsWith("/merchants") },
+  { href: "/", label: "Pemantauan", match: (p: string) => p === "/" || p.startsWith("/pemantauan") || p.startsWith("/merchants") },
 ];
 
 export function AppShell({ user, children }: { user: SessionUser; children: ReactNode }) {
@@ -26,6 +26,7 @@ export function AppShell({ user, children }: { user: SessionUser; children: Reac
   const router = useRouter();
   const [leaving, setLeaving] = useState(false);
   const appName = process.env.NEXT_PUBLIC_APP_NAME || "Monitoring Merchant LVM";
+  const role = ROLE_LABELS[user.role] ?? user.role;
 
   async function logout() {
     setLeaving(true);
@@ -40,13 +41,13 @@ export function AppShell({ user, children }: { user: SessionUser; children: Reac
 
   return (
     <div className="flex min-h-dvh flex-col">
-      <header className="sticky top-0 z-30 border-b border-line bg-surface/95 backdrop-blur">
-        <div className="mx-auto flex h-14 max-w-7xl items-center gap-3 px-4 sm:px-6">
+      <header className="sticky top-0 z-30 border-b border-line bg-surface">
+        <div className="mx-auto flex h-13 max-w-7xl items-stretch gap-4 px-4 sm:gap-6 sm:px-6">
           <Link href="/" aria-label={`${appName} — ke beranda`} className="flex shrink-0 items-center">
-            <Logo className="h-5 sm:h-6" />
+            <Logo className="h-5" />
           </Link>
-          <nav aria-label="Navigasi utama" className="flex items-center gap-1">
-            {(user.akses === "cabang" ? NAV : NAV_PEMANTAUAN).map(({ href, label, icon: Icon, match }) => {
+          <nav aria-label="Navigasi utama" className="flex items-stretch">
+            {(user.akses === "cabang" ? NAV : NAV_PEMANTAUAN).map(({ href, label, match }) => {
               const active = match(pathname);
               return (
                 <Link
@@ -54,27 +55,29 @@ export function AppShell({ user, children }: { user: SessionUser; children: Reac
                   href={href}
                   aria-current={active ? "page" : undefined}
                   className={cx(
-                    "inline-flex h-9 items-center gap-1.5 rounded-lg px-2.5 text-sm font-medium sm:px-3",
-                    active ? "bg-accent-wash text-accent-ink" : "text-ink-2 hover:bg-surface-2 hover:text-ink",
+                    "relative inline-flex items-center px-2.5 text-sm font-medium sm:px-3",
+                    active
+                      ? "text-ink after:absolute after:inset-x-2.5 after:bottom-0 after:h-0.5 after:rounded-full after:bg-btn sm:after:inset-x-3"
+                      : "text-ink-2 hover:text-ink",
                   )}
                 >
-                  <Icon aria-hidden className="size-4" />
-                  <span className="hidden sm:inline">{label}</span>
-                  <span className="sr-only sm:hidden">{label}</span>
+                  {label}
                 </Link>
               );
             })}
           </nav>
-          <div className="ml-auto flex min-w-0 items-center gap-2">
-            <div className="hidden min-w-0 text-right sm:block">
-              <p className="truncate text-sm font-medium text-ink">{user.nama_cabang || "Cabang"} · {user.kode_cabang}</p>
-              <p className="truncate text-xs text-ink-2">{user.user_id} · {ROLE_LABELS[user.role] ?? user.role}</p>
+          <div className="ml-auto flex min-w-0 items-center gap-3">
+            <div className="hidden min-w-0 text-right leading-tight sm:block">
+              <p className="truncate text-[13px] font-medium text-ink">{user.nama_cabang || "Cabang"}</p>
+              <p className="truncate text-xs text-muted">{user.kode_cabang} · {role}</p>
             </div>
+            <span aria-hidden className="hidden h-6 w-px bg-line sm:block" />
             <button
               type="button"
               onClick={logout}
               disabled={leaving}
-              className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-line-strong px-2.5 text-sm text-ink hover:bg-surface-2 disabled:opacity-60"
+              title="Keluar"
+              className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-sm text-ink-2 hover:bg-surface-2 hover:text-ink disabled:opacity-60"
             >
               <LogOut aria-hidden className="size-4" />
               <span className="hidden sm:inline">{leaving ? "Keluar…" : "Keluar"}</span>
@@ -83,10 +86,10 @@ export function AppShell({ user, children }: { user: SessionUser; children: Reac
           </div>
         </div>
         <div className="border-t border-line px-4 py-1.5 text-xs text-ink-2 sm:hidden">
-          {user.nama_cabang || "Cabang"} · {user.kode_cabang} · {ROLE_LABELS[user.role] ?? user.role}
+          {user.nama_cabang || "Cabang"} · {user.kode_cabang} · {role}
         </div>
       </header>
-      <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-5 sm:px-6 sm:py-6">{children}</main>
+      <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-5 sm:px-6">{children}</main>
     </div>
   );
 }

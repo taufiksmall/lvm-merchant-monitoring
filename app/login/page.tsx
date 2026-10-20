@@ -19,10 +19,10 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
   return (
     <main className="flex min-h-dvh items-center justify-center px-4 py-10">
       <div className="w-full max-w-sm">
-        <div className="mb-6 text-center">
-          <Logo className="mx-auto mb-4 h-12" />
-          <h1 className="text-lg font-semibold text-ink">{appName}</h1>
-          <p className="mt-1 text-sm text-ink-2">Masuk dengan kode cabang dan kata sandi dari administrator.</p>
+        <div className="mb-5">
+          <Logo className="mb-5 h-9" />
+          <h1 className="text-base font-semibold text-ink">{appName}</h1>
+          <p className="mt-0.5 text-[13px] text-ink-2">Masuk dengan kode cabang dan kata sandi dari administrator.</p>
         </div>
         <LoginForm next={next} notice={reason} noticeTone={sp.reason === "logout" ? "success" : sp.reason === "inactive" ? "error" : "info"} />
       </div>

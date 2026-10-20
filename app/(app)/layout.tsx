@@ -19,8 +19,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <h1 className="text-lg font-semibold text-ink">Layanan belum dapat diakses</h1>
         <p className="text-sm text-ink-2">{current.error.message}</p>
         <div className="flex gap-2">
-          <a href="" className="inline-flex h-10 items-center rounded-lg bg-btn px-4 text-sm font-medium text-white hover:bg-btn-hover">Muat ulang</a>
-          <a href="/api/auth/session-expired" className="inline-flex h-10 items-center rounded-lg border border-line-strong px-4 text-sm text-ink hover:bg-surface-2">Ke halaman login</a>
+          <a href="" className="inline-flex h-9 items-center rounded-md bg-btn px-3.5 text-sm font-medium text-white hover:bg-btn-hover">Muat ulang</a>
+          <a href="/api/auth/session-expired" className="inline-flex h-9 items-center rounded-md border border-line-strong px-3.5 text-sm text-ink hover:bg-surface-2">Ke halaman login</a>
         </div>
       </main>
     );
