@@ -1,0 +1,38 @@
+{
+  "name": "lvm-merchant-monitoring",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Monitoring merchant LVM per cabang menuju rasio USAK 50% (Next.js + Google Apps Script + Google Sheets).",
+  "engines": {
+    "node": ">=20.9.0"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "dev:api": "node dev/gas-emulator/server.mjs",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test tests/apps-script.test.mjs",
+    "hash-password": "node scripts/hash-password.mjs",
+    "validate:csv": "node scripts/validate-merchants-csv.mjs",
+    "sample-data": "node scripts/generate-sample-data.mjs",
+    "gas:push": "cd apps-script && clasp push"
+  },
+  "dependencies": {
+    "lucide-react": "1.52.0",
+    "next": "16.4.2",
+    "react": "19.2.9",
+    "react-dom": "19.2.9"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.3",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9.39.5",
+    "eslint-config-next": "16.4.2",
+    "tailwindcss": "^4.3.3",
+    "typescript": "5.9.3"
+  }
+}

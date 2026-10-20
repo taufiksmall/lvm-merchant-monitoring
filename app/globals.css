@@ -1,0 +1,117 @@
+@import "tailwindcss";
+
+/*
+ * Token warna berdasarkan peran. Grafik memakai satu hue seri (biru) karena setiap grafik
+ * hanya punya satu seri; warna status (baik/peringatan/kritis) hanya untuk status dan
+ * selalu disertai ikon + label.
+ */
+:root {
+  color-scheme: light;
+  --page: #f3f2ee;
+  --surface: #fcfcfb;
+  --surface-2: #f4f3ef;
+  --ink: #0b0b0b;
+  --ink-2: #52514e;
+  --muted: #6f6d68;
+  --line: #e1e0d9;
+  --line-strong: #c3c2b7;
+  --accent: #2a78d6;
+  --accent-track: #cde2fb;
+  --accent-ink: #1c5cab;
+  --accent-wash: #eaf2fc;
+  --btn: #256abf;
+  --btn-hover: #1c5cab;
+  --good: #0ca30c;
+  --good-ink: #006300;
+  --good-wash: #e8f5e8;
+  --warn: #fab219;
+  --warn-ink: #7a4f00;
+  --warn-wash: #fdf3dc;
+  --critical: #d03b3b;
+  --critical-ink: #b42f2f;
+  --critical-wash: #fbeaea;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --page: #0d0d0d;
+    --surface: #1a1a19;
+    --surface-2: #232321;
+    --ink: #f0efec;
+    --ink-2: #c3c2b7;
+    --muted: #9a9890;
+    --line: #2c2c2a;
+    --line-strong: #383835;
+    --accent: #3987e5;
+    --accent-track: #0d366b;
+    --accent-ink: #86b6ef;
+    --accent-wash: #14243a;
+    --btn: #256abf;
+    --btn-hover: #2a78d6;
+    --good: #0ca30c;
+    --good-ink: #2bbf2b;
+    --good-wash: #10260f;
+    --warn: #fab219;
+    --warn-ink: #f5c04a;
+    --warn-wash: #2a2208;
+    --critical: #d03b3b;
+    --critical-ink: #ef7d7d;
+    --critical-wash: #2c1414;
+  }
+}
+
+@theme inline {
+  --color-page: var(--page);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-accent: var(--accent);
+  --color-accent-track: var(--accent-track);
+  --color-accent-ink: var(--accent-ink);
+  --color-accent-wash: var(--accent-wash);
+  --color-btn: var(--btn);
+  --color-btn-hover: var(--btn-hover);
+  --color-good: var(--good);
+  --color-good-ink: var(--good-ink);
+  --color-good-wash: var(--good-wash);
+  --color-warn: var(--warn);
+  --color-warn-ink: var(--warn-ink);
+  --color-warn-wash: var(--warn-wash);
+  --color-critical: var(--critical);
+  --color-critical-ink: var(--critical-ink);
+  --color-critical-wash: var(--critical-wash);
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background: var(--page);
+  color: var(--ink);
+  font-family: var(--font-sans);
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

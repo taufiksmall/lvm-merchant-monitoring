@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <style>
+      body { font-family: Arial, sans-serif; font-size: 13px; color: #1f2937; margin: 0; padding: 4px 2px; }
+      label { display: block; font-weight: bold; margin: 12px 0 4px; }
+      select, input { width: 100%; box-sizing: border-box; padding: 7px 8px; font-size: 13px; border: 1px solid #cbd5e1; border-radius: 4px; }
+      .hint { color: #64748b; font-size: 12px; margin-top: 4px; }
+      .row { display: flex; gap: 8px; align-items: center; margin-top: 6px; }
+      .row input[type=checkbox] { width: auto; }
+      button { margin-top: 16px; padding: 8px 14px; font-size: 13px; border: 0; border-radius: 4px; background: #1d4ed8; color: #fff; cursor: pointer; }
+      button[disabled] { background: #94a3b8; cursor: default; }
+      .msg { margin-top: 12px; padding: 8px; border-radius: 4px; display: none; }
+      .msg.ok { display: block; background: #ecfdf5; color: #065f46; }
+      .msg.err { display: block; background: #fef2f2; color: #991b1b; }
+    </style>
+  </head>
+  <body>
+    <form id="f" autocomplete="off">
+      <label for="user">Pengguna</label>
+      <select id="user" required><option value="">Memuat…</option></select>
+
+      <label for="pw">Kata sandi baru</label>
+      <input id="pw" type="password" minlength="10" maxlength="200" required autocomplete="new-password">
+      <div class="hint">Minimal 10 karakter, memuat huruf dan angka. Kata sandi langsung di-hash dan tidak disimpan.</div>
+
+      <label for="pw2">Ulangi kata sandi</label>
+      <input id="pw2" type="password" minlength="10" maxlength="200" required autocomplete="new-password">
+      <div class="row"><input id="show" type="checkbox"><span>Tampilkan kata sandi</span></div>
+
+      <button id="btn" type="submit">Simpan kata sandi</button>
+      <div id="msg" class="msg" role="status"></div>
+    </form>
+    <script>
+      var sel = document.getElementById('user');
+      var msg = document.getElementById('msg');
+      var btn = document.getElementById('btn');
+      function show(text, ok) { msg.textContent = text; msg.className = 'msg ' + (ok ? 'ok' : 'err'); }
+      document.getElementById('show').addEventListener('change', function (e) {
+        var t = e.target.checked ? 'text' : 'password';
+        document.getElementById('pw').type = t;
+        document.getElementById('pw2').type = t;
+      });
+      google.script.run
+        .withSuccessHandler(function (users) {
+          sel.innerHTML = '<option value="">— pilih user_id —</option>';
+          users.forEach(function (u) {
+            var o = document.createElement('option');
+            o.value = u.user_id;
+            o.textContent = u.user_id + ' · ' + u.kode_cabang + ' ' + u.nama_cabang + ' · ' + u.role +
+              (u.is_active ? '' : ' · nonaktif') + (u.has_password ? '' : ' · belum ada sandi');
+            sel.appendChild(o);
+          });
+        })
+        .withFailureHandler(function (err) { show(err.message, false); })
+        .adminListUsers();
+      document.getElementById('f').addEventListener('submit', function (e) {
+        e.preventDefault();
+        btn.disabled = true;
+        show('Menyimpan…', true);
+        var pw = document.getElementById('pw'), pw2 = document.getElementById('pw2');
+        google.script.run
+          .withSuccessHandler(function (text) { pw.value = ''; pw2.value = ''; btn.disabled = false; show(text, true); })
+          .withFailureHandler(function (err) { btn.disabled = false; show(err.message, false); })
+          .adminSetPassword({ user_id: sel.value, password: pw.value, confirm: pw2.value });
+      });
+    </script>
+  </body>
+</html>

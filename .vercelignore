@@ -1,0 +1,7 @@
+# Tidak dibutuhkan saat build di Vercel
+apps-script
+dev
+tests
+sample-data
+docs
+._*
