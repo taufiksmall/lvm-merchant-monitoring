@@ -40,6 +40,27 @@ function validateLoginInput_(payload) {
   return { kode: kode, password: password };
 }
 
+/**
+ * Akun yang cocok dengan kode login (kolom yang dibutuhkan saja). Di-cache 2 menit per kode agar login
+ * tidak membaca sheet Users setiap kali. Cache dibuang oleh menu admin yang mengubah akun
+ * (USERS_VERSION); edit langsung di sheet berlaku paling lambat 2 menit. Hasil kosong tidak di-cache.
+ */
+function loadLoginCandidates_(kode, pad) {
+  var key = 'lc:' + getVersion_('USERS_VERSION') + ':' + kode;
+  var cached = cacheGetJson_(key);
+  if (cached) return cached;
+  var list = readTable_(SHEETS.USERS).rows
+    .filter(function (u) { return normKode_(u.kode_cabang, pad) === kode; })
+    .map(function (u) {
+      return {
+        user_id: str_(u.user_id), kode_cabang: str_(u.kode_cabang), nama_cabang: str_(u.nama_cabang),
+        password_hash: str_(u.password_hash), role: str_(u.role), is_active: toBool_(u.is_active),
+      };
+    });
+  if (list.length) cachePutJson_(key, list, 120);
+  return list;
+}
+
 function login_(payload) {
   var input = validateLoginInput_(payload);
   var cfg = loadConfig_();
@@ -54,8 +75,7 @@ function login_(payload) {
     throw new AppError('RATE_LIMITED', 'Terlalu banyak percobaan login gagal. Coba lagi dalam ' + lockMinutes + ' menit.');
   }
 
-  var users = readTable_(SHEETS.USERS).rows;
-  var candidates = users.filter(function (u) { return normKode_(u.kode_cabang, pad) === kode; });
+  var candidates = loadLoginCandidates_(kode, pad);
   var matched = null;
   if (!candidates.length) dummyPasswordWork_();
   for (var i = 0; i < candidates.length; i++) {
@@ -106,7 +126,7 @@ function login_(payload) {
   var data = sessionDataFromUser_(matched, cfg, hash, expiresAt);
   cacheSession_(data);
   var ctx = finalizeSession_(data, cfg);
-  audit_(ctx, 'LOGIN', '', '');
+  if (toBool_(cfg.settings.AUDIT_LOGIN)) audit_(ctx, 'LOGIN', '', ''); // opsional: satu penulisan sheet lebih lambat per login
   return { token: token, expires_at: expiresAt, user: publicUser_(ctx) };
 }
 

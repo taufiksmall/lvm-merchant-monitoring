@@ -6,7 +6,7 @@ import { useState, type FormEvent } from "react";
 import { COLUMN_LABELS, DETAIL_SECTIONS, FINANCIAL_COLUMNS, MONEY_COLUMNS, type MerchantColumn } from "@/lib/columns";
 import { displayValue, fmtDate, fmtDateTime, fmtNumber, fmtRupiah, relativeDays } from "@/lib/format";
 import { ApiError, apiFetch } from "@/lib/client/api";
-import { useApi } from "@/lib/client/use-api";
+import { invalidateApi, useApi } from "@/lib/client/use-api";
 import type { FollowUp, MerchantDetail, Option, RevealResult } from "@/lib/types";
 import { FollowUpCell, PriorityBadge, UsakBadge } from "./badges";
 import { Alert, Badge, Button, Card, EmptyState, ErrorState, Skeleton, cx } from "./ui";
@@ -428,6 +428,9 @@ function FollowUpPanel({ data, storeId, onSaved }: { data: MerchantDetail; store
   const [editing, setEditing] = useState<string | null>(null);
 
   const saved = (msg: string) => {
+    // Follow-up mengubah status/prioritas: buang cache daftar & dasbor agar tampil mutakhir.
+    invalidateApi("/api/merchants");
+    invalidateApi("/api/dashboard");
     setMessage(msg);
     setEditing(null);
     onSaved();

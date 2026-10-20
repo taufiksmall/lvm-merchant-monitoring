@@ -3,6 +3,8 @@
  */
 import { NextResponse, type NextRequest } from "next/server";
 import { SESSION_COOKIE_NAME, SESSION_TOKEN_PATTERN } from "@/lib/session-cookie";
+import type { SessionUser } from "@/lib/types";
+import { USER_COOKIE_NAME, signUserCookie } from "./user-cookie";
 import { callAppsScript, type ApiErrorBody, type AppsScriptResult } from "./apps-script";
 
 const STATUS_BY_CODE: Record<string, number> = {
@@ -68,16 +70,33 @@ export function setSessionCookie(res: NextResponse, token: string, expiresAt: st
   });
 }
 
-export function clearSessionCookie(res: NextResponse) {
+/** Cookie profil tampilan (ditandatangani); lihat user-cookie.ts. */
+export function setUserCookie(res: NextResponse, user: SessionUser, expiresAt: string) {
+  const expires = new Date(expiresAt);
+  if (Number.isNaN(expires.getTime())) return;
   res.cookies.set({
-    name: SESSION_COOKIE_NAME,
-    value: "",
+    name: USER_COOKIE_NAME,
+    value: signUserCookie(user, expires.getTime()),
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
     path: "/",
-    maxAge: 0,
+    expires,
   });
+}
+
+export function clearSessionCookie(res: NextResponse) {
+  for (const name of [SESSION_COOKIE_NAME, USER_COOKIE_NAME]) {
+    res.cookies.set({
+      name,
+      value: "",
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      maxAge: 0,
+    });
+  }
 }
 
 export function sessionToken(req: NextRequest): string | null {

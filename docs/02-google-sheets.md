@@ -191,9 +191,12 @@ Lihat [04-konfigurasi-usak.md](04-konfigurasi-usak.md).
 | USAK_SOURCE_COLUMN | grading_trx | Kolom Merchants yang menentukan status USAK: `grading_trx` atau `grading_usak` |
 | DEFAULT_PAGE_SIZE / MAX_PAGE_SIZE | 25 / 100 | Pagination |
 | KODE_CABANG_PAD_LENGTH | (kosong) | Isi mis. `4` bila kode cabang angka kehilangan nol di depan (`101` → `0101`) |
+| AUDIT_LOGIN | FALSE | `TRUE` = catat setiap login berhasil di AuditLog (menambah ±0,5 detik per login) |
 | PBKDF2_ITERATIONS | 100000 | Iterasi hash baru dari menu admin |
 | DATA_SNAPSHOT_DATE | (kosong) | Tanggal posisi data untuk ditampilkan di dashboard |
 | TIMEZONE | Asia/Jakarta | Penentuan "hari ini" untuk jatuh tempo |
+
+Daftar akun untuk login di-cache 2 menit per kode: mengganti kata sandi/hash lewat menu admin berlaku seketika, sedangkan edit langsung di sheet `Users` berlaku paling lambat 2 menit.
 
 Perubahan konfigurasi berlaku ≤ 2 menit, atau seketika setelah **LVM Admin › Bersihkan cache aplikasi**.
 

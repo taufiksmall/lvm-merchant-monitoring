@@ -211,6 +211,7 @@ var DEFAULT_SETTINGS = {
   MAX_PAGE_SIZE: { nilai: '100', keterangan: 'Jumlah baris per halaman maksimum.' },
   KODE_CABANG_PAD_LENGTH: { nilai: '', keterangan: 'Opsional. Isi panjang kode cabang (mis. 4) agar kode angka dilengkapi nol di depan (101 -> 0101).' },
   USAK_SOURCE_COLUMN: { nilai: 'grading_trx', keterangan: 'Satu-satunya kolom Merchants yang menentukan status USAK: grading_trx atau grading_usak. Nilainya dipetakan di sheet UsakConfig.' },
+  AUDIT_LOGIN: { nilai: 'FALSE', keterangan: 'TRUE = catat setiap login berhasil di AuditLog (menambah ±0,5 detik per login). Percobaan terkunci dan akses data sensitif selalu dicatat.' },
   PBKDF2_ITERATIONS: { nilai: '100000', keterangan: 'Iterasi hash kata sandi baru yang dibuat lewat menu admin.' },
   DATA_SNAPSHOT_DATE: { nilai: '', keterangan: 'Opsional. Tanggal posisi data merchant (yyyy-MM-dd) untuk ditampilkan di dashboard.' },
   TIMEZONE: { nilai: 'Asia/Jakarta', keterangan: 'Zona waktu untuk tanggal jatuh tempo follow-up.' },

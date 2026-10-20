@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState, type ReactNode } from "react";
 import { apiFetch } from "@/lib/client/api";
+import { clearApiCache } from "@/lib/client/use-api";
 import type { SessionUser } from "@/lib/types";
 import { Logo } from "./logo";
 import { cx } from "./ui";
@@ -31,6 +32,7 @@ export function AppShell({ user, children }: { user: SessionUser; children: Reac
     try {
       await apiFetch("/api/auth/logout", { method: "POST", json: {} });
     } finally {
+      clearApiCache();
       router.replace("/login?reason=logout");
       router.refresh();
     }

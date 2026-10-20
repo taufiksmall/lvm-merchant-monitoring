@@ -1035,3 +1035,38 @@ describe('pencarian merchant akun area/region', () => {
     assert.equal(call('region.searchMerchants', { q: 'S0101' }).error.code, 'UNAUTHENTICATED');
   });
 });
+
+describe('kecepatan login', () => {
+  test('pencarian akun di-cache dan dibuang saat kata sandi diubah lewat menu admin', () => {
+    const { rt, call } = setup();
+    const login = (pw) => call('auth.login', { kode_cabang: '0102', password: pw });
+    assert.equal(login(PW.petugas0102).ok, true);
+    // login kedua memakai cache akun: tidak membaca sheet Users lagi
+    const users = rt.spreadsheet.getSheetByName('Users');
+    const spy = { n: 0 };
+    const orig = users.getRange.bind(users);
+    users.getRange = (...a) => { spy.n++; return orig(...a); };
+    assert.equal(login(PW.petugas0102).ok, true);
+    assert.equal(spy.n, 0, 'sheet Users tidak dibaca pada login kedua');
+    users.getRange = orig;
+    // ganti kata sandi lewat menu admin -> cache akun dibuang, sandi lama ditolak, baru diterima
+    rt.run('adminSetPassword', { user_id: 'U0102', password: 'SandiBaru-12345', confirm: 'SandiBaru-12345' });
+    assert.equal(login(PW.petugas0102).error.code, 'INVALID_CREDENTIALS');
+    assert.equal(login('SandiBaru-12345').ok, true);
+  });
+
+  test('audit LOGIN opsional lewat Settings AUDIT_LOGIN (bawaan mati)', () => {
+    const { rt, call } = setup();
+    const count = () => sheetRows(rt, 'AuditLog').filter((a) => a.aksi === 'LOGIN').length;
+    call('auth.login', { kode_cabang: '0102', password: PW.petugas0102 });
+    assert.equal(count(), 0);
+    const settings = rt.spreadsheet.getSheetByName('Settings');
+    const row = sheetRows(rt, 'Settings').findIndex((r) => r.kunci === 'AUDIT_LOGIN') + 2;
+    assert.ok(row > 1);
+    settings.getRange(row, 2).setValue('TRUE');
+    rt.run('bumpVersion_', 'CONFIG_VERSION');
+    rt.clearCache();
+    call('auth.login', { kode_cabang: '0102', password: PW.petugas0102 });
+    assert.equal(count(), 1);
+  });
+});

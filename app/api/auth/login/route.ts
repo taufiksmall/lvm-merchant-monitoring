@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 import { callAppsScript } from "@/lib/server/apps-script";
-import { jsonError, jsonOk, pickStrings, readJsonBody, rejectCrossSite, setSessionCookie } from "@/lib/server/http";
+import { jsonError, jsonOk, pickStrings, readJsonBody, rejectCrossSite, setSessionCookie, setUserCookie } from "@/lib/server/http";
 import type { SessionUser } from "@/lib/types";
 
 // Apps Script bisa memakan puluhan detik pada pemuatan pertama cabang.
@@ -21,5 +21,6 @@ export async function POST(req: NextRequest) {
   // Token hanya disimpan di cookie httpOnly; tidak pernah dikirim ke JavaScript browser.
   const res = jsonOk({ user: result.data.user });
   setSessionCookie(res, result.data.token, result.data.expires_at);
+  setUserCookie(res, result.data.user, result.data.expires_at);
   return res;
 }

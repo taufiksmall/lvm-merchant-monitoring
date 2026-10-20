@@ -1,8 +1,11 @@
 "use client";
 
 import { Eye, EyeOff } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { ApiError, apiFetch } from "@/lib/client/api";
+import { clearApiCache, prefetchApi } from "@/lib/client/use-api";
+import type { SessionUser } from "@/lib/types";
 import { Alert, Button, cx } from "./ui";
 
 type Errors = { kode_cabang?: string; password?: string; form?: string };
@@ -24,6 +27,7 @@ export function LoginForm({ next, notice, noticeTone }: { next: string; notice?:
   const [showPassword, setShowPassword] = useState(false);
   const [errors, setErrors] = useState<Errors>({});
   const [submitting, setSubmitting] = useState(false);
+  const router = useRouter();
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -32,8 +36,13 @@ export function LoginForm({ next, notice, noticeTone }: { next: string; notice?:
     if (Object.keys(found).length) return;
     setSubmitting(true);
     try {
-      await apiFetch("/api/auth/login", { method: "POST", json: { kode_cabang: kode.trim(), password } });
-      window.location.assign(next);
+      const res = await apiFetch<{ user: SessionUser }>("/api/auth/login", { method: "POST", json: { kode_cabang: kode.trim(), password } });
+      // Batas autentikasi: buang cache pengguna sebelumnya, lalu mulai ambil data halaman awal
+      // bersamaan dengan pemuatan halaman (tanpa menunggu hidrasi).
+      clearApiCache();
+      if (next === "/") prefetchApi(res.user.akses === "cabang" ? "/api/dashboard" : "/api/region");
+      router.replace(next);
+      router.refresh();
     } catch (err) {
       const apiErr = err instanceof ApiError ? err : null;
       setErrors({

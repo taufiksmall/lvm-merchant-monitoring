@@ -340,6 +340,7 @@ function adminSetPassword(form) {
     if (!row) throw new Error('user_id tidak ditemukan.');
     updateObjectFields_(SHEETS.USERS, row._row, { password_hash: hash });
   });
+  bumpVersion_('USERS_VERSION');
   var revoked = revokeSessionsForUser_(userId);
   audit_({ user_id: 'admin', kode_cabang: str_(row.kode_cabang) }, 'ADMIN_SET_PASSWORD', '', 'user_id ' + userId);
   return 'Kata sandi ' + userId + ' diperbarui. ' + revoked + ' sesi lama dicabut.';
@@ -455,6 +456,7 @@ function createBranchAccounts_() {
     writeRowsByHeader_(usersSheet, canonical, rows.map(function (r) {
       return canonical.map(function (col) { return cellValueFor_(SHEETS.USERS, col, r[col]); });
     }));
+    bumpVersion_('USERS_VERSION');
     audit_({ user_id: 'admin', kode_cabang: '' }, 'ADMIN_CREATE_BRANCH_ACCOUNTS', '', rows.length + ' akun');
   }
   var lines = [
@@ -518,6 +520,7 @@ function applyUserHashImport_() {
       usersSheet.getRange(2, info.index.password_hash + 1, count, 1).setValues(hashes);
       usersSheet.getRange(2, info.index.is_active + 1, count, 1).setValues(actives);
     });
+    bumpVersion_('USERS_VERSION');
     var revoked = revokeSessionsForUsers_(changedIds);
     audit_({ user_id: 'admin', kode_cabang: '' }, 'ADMIN_IMPORT_PASSWORD_HASH', '', changedIds.length + ' akun');
     // Kosongkan Import_Users (hash tidak perlu tersimpan di sana).
@@ -898,6 +901,7 @@ function createRegionAreaAccounts_() {
     writeRowsByHeader_(usersSheet, canonical, rows.map(function (r) {
       return canonical.map(function (col) { return cellValueFor_(SHEETS.USERS, col, r[col]); });
     }));
+    bumpVersion_('USERS_VERSION');
     audit_({ user_id: 'admin', kode_cabang: '' }, 'ADMIN_CREATE_SCOPE_ACCOUNTS', '', rows.length + ' akun');
   }
   var lines = [rows.length + ' akun dibuat (' + rows.filter(function (r) { return r.role === 'area'; }).length + ' area, ' +
@@ -1009,6 +1013,7 @@ function clearAppCache() {
   return runAdmin_('Bersihkan cache', function () {
     bumpVersion_('DATA_VERSION');
     bumpVersion_('CONFIG_VERSION');
-    return ['Cache data, follow-up & konfigurasi dikosongkan. Perubahan sheet langsung terlihat di aplikasi.'];
+    bumpVersion_('USERS_VERSION');
+    return ['Cache data, follow-up, akun & konfigurasi dikosongkan. Perubahan sheet langsung terlihat di aplikasi.'];
   });
 }
