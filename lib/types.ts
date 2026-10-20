@@ -230,3 +230,25 @@ export type RegionSummary = {
   warnings: Warning[];
   data: { diperbarui: string; snapshot_date: string };
 };
+
+export type RegionSearchItem = {
+  kode_cabang: string;
+  nama_cabang: string;
+  nama_area: string;
+  store_id: string;
+  mid_static: string;
+  store_name: string;
+  owner_name: string;
+  status_trx: string;
+  grading_trx: string;
+  Tiering: string;
+  usak: UsakInfo;
+};
+
+export type RegionSearch = {
+  q: string;
+  items: RegionSearchItem[];
+  truncated: boolean;
+  cabang_dicari: number;
+  bidang: string[];
+};

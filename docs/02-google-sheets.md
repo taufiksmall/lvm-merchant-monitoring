@@ -119,6 +119,12 @@ Langkah menyiapkan (setelah **Bangun indeks cabang**):
 3. **LVM Admin › Buat akun area dan region** — membuat baris `Users` (`user_id` = kode login, `role` = `area`/`region`, nonaktif, tanpa kata sandi).
 4. Unduh sheet `Users` sebagai CSV dan buat hash kata sandi: `npm run passwords:bulk -- users.csv --pattern='Mdna{kode}#'` (atau kata sandi acak / `--passwords`). Terapkan hash seperti akun cabang. Login memakai kode wilayah di kolom **Kode cabang**.
 
+Di halaman Pemantauan akun area/region juga bisa:
+
+- **Cari merchant** di semua cabang dalam cakupannya (nama merchant, MID, `store_id`, nama pemilik; minimal 3 karakter, maksimal 40 hasil). Pencarian hanya menjangkau cabang di cakupan akun dan tidak mencari atau menampilkan rekening/CIF/saldo. Hasil membuka detail merchant (hanya lihat).
+- **Filter Area** (akun region): dropdown **Area** menyaring tabel cabang ke satu area; klik nama area pada kartu "Per area" untuk memfilter, klik lagi untuk melepas. Digabung dengan filter rasio dan pencarian cabang.
+- **Filter rasio USAK** dengan rentang yang ditentukan sendiri (dari ≥ X% sampai < Y%) atau pilihan cepat (`< 25%`, `25% – <50%`, `< 50%`, `≥ 50%`), digabung dengan pencarian nama/kode cabang.
+
 Angka pada halaman Pemantauan adalah **snapshot** saat **Bangun indeks cabang** dijalankan (total, USAK, belum USAK, perlu dicek per cabang). Jalankan ulang setelah data merchant atau definisi USAK berubah. Cabang yang barisnya terpecah (belum terurut) tidak muncul sampai **Urutkan Merchants per cabang** dijalankan.
 
 > Kata sandi berpola yang bisa diturunkan dari kode (mis. `MdnaAREA-PALU#`) lebih berisiko untuk akun area/region karena mencakup banyak cabang. Pertimbangkan `--length`/acak untuk akun-akun ini.

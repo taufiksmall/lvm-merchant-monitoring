@@ -26,6 +26,7 @@ Ada dua lapis API:
 | `GET /api/auth/me` | `auth.me` | Profil sesi + izin role |
 | `GET /api/auth/session-expired` | — | Menghapus cookie lalu redirect ke `/login` |
 | `GET /api/dashboard` | `dashboard.summary` | Ringkasan cabang (akun area/region wajib `kode_cabang` di cakupannya) |
+| `GET /api/region/search?q=` | `region.searchMerchants` | Cari merchant di cabang dalam cakupan akun area/region (min. 3 karakter, maks. 40 hasil) |
 | `GET /api/region` | `region.summary` | Pemantauan akun area/region: cabang di cakupan, diurut rasio USAK terendah |
 | `GET /api/merchants` | `merchants.list` | Query: `q, page, page_size, sort, dir, follow_up, status_follow_up, kategori_usak, status_trx, grading_trx, Tiering, status_rekening, flag_card_dongle, nama_area_final` (filter boleh berulang; `grading_usak` hanya berlaku bila menjadi kolom acuan USAK) |
 | `GET /api/merchants/filter-options` | `merchants.filterOptions` | Nilai unik filter di cabang |

@@ -80,9 +80,39 @@ class MockRange {
     rows.forEach((line, r) => line.forEach((v, c) => this.sheet._setRaw(this.row + r, this.col + c, v)));
     return this;
   }
+  /** Tiruan Range.createTextFinder: pencarian sel berisi teks (tanpa beda huruf besar/kecil bila matchCase(false)). */
+  createTextFinder(text) { return makeTextFinder(this.sheet, [{ row: this.row, col: this.col, numRows: this.numRows, numCols: this.numCols }], text); }
   setFontWeight() { return this; }
   setBackground() { return this; }
   setWrap() { return this; }
+}
+
+function makeTextFinder(sheet, specs, text) {
+  let matchCase = false, entire = false;
+  const cells = () => {
+    const out = [];
+    for (const s of specs) for (let r = 0; r < s.numRows; r++) for (let c = 0; c < s.numCols; c++) out.push([s.row + r, s.col + c]);
+    return out;
+  };
+  let queue = null;
+  const finder = {
+    matchCase(v) { matchCase = !!v; return finder; },
+    matchEntireCell(v) { entire = !!v; return finder; },
+    findNext() {
+      if (!queue) {
+        const needle = matchCase ? String(text) : String(text).toLowerCase();
+        queue = cells().filter(([r, c]) => {
+          const v = sheet._read(r, c);
+          if (v === '' || v === null || v === undefined) return false;
+          const hay = matchCase ? String(v) : String(v).toLowerCase();
+          return entire ? hay === needle : hay.includes(needle);
+        });
+      }
+      const next = queue.shift();
+      return next ? { getRow: () => next[0], getColumn: () => next[1] } : null;
+    },
+  };
+  return finder;
 }
 
 class MockSheet {
@@ -136,6 +166,16 @@ class MockSheet {
   getRange(row, col, numRows = 1, numCols = 1) {
     if (typeof row === 'string') throw new Error('Emulator hanya mendukung getRange numerik.');
     return new MockRange(this, row, col, numRows, numCols);
+  }
+  getRangeList(a1List) {
+    const parse = (a1) => {
+      const m = /^([A-Z]+)(\d+):([A-Z]+)(\d+)$/.exec(a1);
+      if (!m) throw new Error('A1 tidak didukung emulator: ' + a1);
+      const num = (L) => L.split('').reduce((n, ch) => n * 26 + ch.charCodeAt(0) - 64, 0);
+      return { row: Number(m[2]), col: num(m[1]), numRows: Number(m[4]) - Number(m[2]) + 1, numCols: num(m[3]) - num(m[1]) + 1 };
+    };
+    const specs = a1List.map(parse);
+    return { createTextFinder: (text) => makeTextFinder(this, specs, text) };
   }
   getDataRange() { return this.getRange(1, 1, Math.max(this.getLastRow(), 1), Math.max(this.getLastColumn(), 1)); }
   appendRow(values) {

@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useState, type ReactNode } from "react";
 import { apiFetch } from "@/lib/client/api";
 import type { SessionUser } from "@/lib/types";
+import { Logo } from "./logo";
 import { cx } from "./ui";
 
 const NAV = [
@@ -39,11 +40,8 @@ export function AppShell({ user, children }: { user: SessionUser; children: Reac
     <div className="flex min-h-dvh flex-col">
       <header className="sticky top-0 z-30 border-b border-line bg-surface/95 backdrop-blur">
         <div className="mx-auto flex h-14 max-w-7xl items-center gap-3 px-4 sm:px-6">
-          <Link href="/" className="flex shrink-0 items-center gap-2 font-semibold text-ink">
-            <span aria-hidden className="flex size-7 items-center justify-center rounded-lg bg-btn">
-              <svg viewBox="0 0 32 32" className="size-5"><rect x="7" y="17" width="4" height="8" rx="1.5" fill="#fff" /><rect x="14" y="12" width="4" height="13" rx="1.5" fill="#fff" /><rect x="21" y="7" width="4" height="18" rx="1.5" fill="#fff" /></svg>
-            </span>
-            <span className="hidden text-sm lg:inline">{appName}</span>
+          <Link href="/" aria-label={`${appName} — ke beranda`} className="flex shrink-0 items-center">
+            <Logo className="h-5 sm:h-6" />
           </Link>
           <nav aria-label="Navigasi utama" className="flex items-center gap-1">
             {(user.akses === "cabang" ? NAV : NAV_PEMANTAUAN).map(({ href, label, icon: Icon, match }) => {
@@ -59,7 +57,8 @@ export function AppShell({ user, children }: { user: SessionUser; children: Reac
                   )}
                 >
                   <Icon aria-hidden className="size-4" />
-                  {label}
+                  <span className="hidden sm:inline">{label}</span>
+                  <span className="sr-only sm:hidden">{label}</span>
                 </Link>
               );
             })}

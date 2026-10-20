@@ -20,6 +20,7 @@ function routes_() {
     'auth.me': { fn: function (ctx) { return me_(ctx); } },
     // Pemantauan banyak cabang (akun area/region saja).
     'region.summary': { fn: function (ctx) { return regionSummary_(ctx); } },
+    'region.searchMerchants': { fn: function (ctx, p) { return searchScopeMerchants_(ctx, p); } },
     // Aksi per cabang. Untuk akun area/region, cabang yang diminta divalidasi terhadap cakupannya
     // (effectiveCtx_); untuk akun cabang, parameter kode_cabang diabaikan.
     'dashboard.summary': { fn: function (ctx, p) { return dashboardSummary_(effectiveCtx_(ctx, p)); } },

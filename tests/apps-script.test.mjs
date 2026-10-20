@@ -972,3 +972,66 @@ describe('akun area dan region', () => {
     assert.equal(call('region.summary', {}, t).error.code, 'FORBIDDEN');
   });
 });
+
+describe('pencarian merchant akun area/region', () => {
+  function scopeSetup() {
+    const ctx = setup();
+    const { rt } = ctx;
+    rt.run('prepareWilayahSheet_');
+    const w = rt.spreadsheet.getSheetByName('Wilayah');
+    const header = w.getRange(1, 1, 1, w.getLastColumn()).getValues()[0];
+    for (let r = 2; r <= w.getLastRow(); r++) {
+      w._setRaw(r, header.indexOf('nama_region') + 1, 'Region Jabar');
+      w._setRaw(r, header.indexOf('kode_region') + 1, 'REG-JABAR');
+    }
+    rt.run('createRegionAreaAccounts_');
+    const users = rt.spreadsheet.getSheetByName('Users');
+    const uh = users.getRange(1, 1, 1, users.getLastColumn()).getValues()[0];
+    for (let r = 2; r <= users.getLastRow(); r++) {
+      const id = users.getRange(r, uh.indexOf('user_id') + 1).getValue();
+      if (id === 'AREA-CONTOH-BANDUNG-RAYA' || id === 'REG-JABAR') {
+        users._setRaw(r, uh.indexOf('password_hash') + 1, rt.context.hashPassword_('PolaUji-12345', 20000));
+        users._setRaw(r, uh.indexOf('is_active') + 1, true);
+      }
+    }
+    const tok = (kode) => ctx.call('auth.login', { kode_cabang: kode, password: 'PolaUji-12345' }).data.token;
+    return { ...ctx, tok };
+  }
+  const merchant = (rt, kode, n = 0) => sheetRows(rt, 'Merchants').filter((m) => m.kode_cabang_final === kode)[n];
+
+  test('cari lewat MID, nama, store_id, dan pemilik; hanya dalam cakupan', () => {
+    const { rt, call, tok } = scopeSetup();
+    const area = tok('AREA-CONTOH-BANDUNG-RAYA');
+    const m = merchant(rt, '0101', 3);
+    const byMid = call('region.searchMerchants', { q: m.mid_static }, area);
+    assert.equal(byMid.ok, true, JSON.stringify(byMid.error));
+    assert.deepEqual(byMid.data.items.map((i) => i.store_id), [m.store_id]);
+    assert.equal(byMid.data.items[0].kode_cabang, '0101');
+    assert.equal(byMid.data.items[0].nama_cabang, 'KC Contoh Bandung');
+    assert.ok(!('account_number' in byMid.data.items[0]) && !('cifno' in byMid.data.items[0]));
+    // huruf besar/kecil tidak berpengaruh; store_id dan pemilik juga dicari
+    assert.equal(call('region.searchMerchants', { q: m.store_id.toLowerCase() }, area).data.items.length, 1);
+    const owner = call('region.searchMerchants', { q: m.owner_name }, area).data.items;
+    assert.ok(owner.some((i) => i.store_id === m.store_id));
+    // merchant di area lain tidak ditemukan oleh akun area; ditemukan oleh akun region
+    const other = merchant(rt, '0201', 0);
+    assert.equal(call('region.searchMerchants', { q: other.mid_static }, area).data.items.length, 0);
+    const reg = tok('REG-JABAR');
+    assert.deepEqual(call('region.searchMerchants', { q: other.mid_static }, reg).data.items.map((i) => i.store_id), [other.store_id]);
+    assert.equal(call('region.searchMerchants', { q: other.mid_static }, area).data.cabang_dicari, 2);
+  });
+
+  test('validasi kata kunci, batas hasil, dan hak akses', () => {
+    const { rt, call, tok, login } = scopeSetup();
+    const area = tok('AREA-CONTOH-BANDUNG-RAYA');
+    assert.equal(call('region.searchMerchants', { q: 'ab' }, area).error.code, 'VALIDATION_ERROR');
+    assert.equal(call('region.searchMerchants', {}, area).error.code, 'VALIDATION_ERROR');
+    const many = call('region.searchMerchants', { q: 'Contoh' }, area).data; // 'KC Contoh' bukan kolom pencarian
+    assert.equal(many.items.length, 0);
+    const wide = call('region.searchMerchants', { q: 'S0101' }, area).data; // store_id semua merchant 0101
+    assert.equal(wide.items.length, 40);
+    assert.equal(wide.truncated, true);
+    assert.equal(call('region.searchMerchants', { q: 'S0101' }, login('0101', PW.petugas0101)).error.code, 'FORBIDDEN');
+    assert.equal(call('region.searchMerchants', { q: 'S0101' }).error.code, 'UNAUTHENTICATED');
+  });
+});
