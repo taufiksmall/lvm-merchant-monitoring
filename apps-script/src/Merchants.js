@@ -27,7 +27,41 @@ function normalizeMerchantValue_(col, v, tz, pad) {
   return str_(v);
 }
 
-/** Baca merchant satu cabang dari sheet. Hanya baris cabang tersebut yang diproses. */
+/** Indeks baris (0) milik kode cabang. */
+function branchMatchIndexes_(kodes, kode, pad) {
+  var out = [];
+  for (var i = 0; i < kodes.length; i++) if (normKode_(kodes[i][0], pad) === kode) out.push(i);
+  return out;
+}
+
+/** Gabungkan indeks baris menjadi segmen; indeks yang berjarak <= gap masuk segmen yang sama. */
+function mergeSegments_(matches, gap) {
+  var segments = [], cur = null;
+  for (var i = 0; i < matches.length; i++) {
+    var m = matches[i];
+    if (cur && m - cur.end - 1 <= gap) cur.end = m;
+    else { cur = { start: m, end: m }; segments.push(cur); }
+  }
+  return segments;
+}
+
+/** Batasi jumlah segmen (jumlah panggilan getRange) dengan memperlebar celah penggabungan. */
+function planSegments_(matches, totalRows) {
+  var gaps = [MERCHANT_SEGMENT_GAP, 1000, 5000, 20000, totalRows];
+  var segments = [];
+  for (var g = 0; g < gaps.length; g++) {
+    segments = mergeSegments_(matches, gaps[g]);
+    if (segments.length <= MERCHANT_MAX_SEGMENTS) break;
+  }
+  return segments;
+}
+
+/**
+ * Baca merchant satu cabang dari sheet. Kolom kode cabang dibaca dulu; setelah itu hanya
+ * segmen baris cabang tersebut yang dibaca (dalam potongan MERCHANT_SCAN_CHUNK_ROWS).
+ * scan_mode: 'block' (satu segmen, data terurut per cabang), 'runs' (beberapa segmen),
+ * 'full' (data tersebar: banyak baris cabang lain ikut terbaca, lambat).
+ */
 function readBranchMerchantsFromSheet_(kode, cfg) {
   return sheetOp_(function () {
     var sheet = getSheet_(SHEETS.MERCHANTS);
@@ -37,40 +71,47 @@ function readBranchMerchantsFromSheet_(kode, cfg) {
     }
     var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
     var info = buildHeaderIndex_(headers, MERCHANT_COLUMNS);
-    assertHeaders_(SHEETS.MERCHANTS, info, MERCHANT_REQUIRED_COLUMNS);
-    var result = { rows: [], missing_columns: info.missing, duplicates: 0, loaded_at: isoNow_() };
+    assertHeaders_(SHEETS.MERCHANTS, info, merchantRequiredColumns_(cfg));
+    var result = { rows: [], missing_columns: info.missing, duplicates: 0, loaded_at: isoNow_(), scan_mode: 'block' };
     if (lastRow < 2) return result;
 
     var pad = cfg.settings.KODE_CABANG_PAD_LENGTH;
     var tz = settingTz_(cfg);
     var kcol = info.index.kode_cabang_final;
-    // Baca kolom kode cabang dulu, lalu hanya blok baris yang memuat cabang ini.
-    var kodes = sheet.getRange(2, kcol + 1, lastRow - 1, 1).getValues();
-    var first = -1, last = -1;
-    for (var i = 0; i < kodes.length; i++) {
-      if (normKode_(kodes[i][0], pad) === kode) {
-        if (first < 0) first = i;
-        last = i;
-      }
-    }
-    if (first < 0) return result;
-    var block = sheet.getRange(2 + first, 1, last - first + 1, lastCol).getValues();
-    var seen = {};
     var sidCol = info.index.store_id;
-    for (var r = 0; r < block.length; r++) {
-      var row = block[r];
-      if (normKode_(row[kcol], pad) !== kode) continue;
-      var storeId = str_(row[sidCol]);
-      if (!storeId) continue;
-      if (seen[storeId]) { result.duplicates++; continue; }
-      seen[storeId] = true;
-      var arr = new Array(MERCHANT_COLUMNS.length);
-      for (var c = 0; c < MERCHANT_COLUMNS.length; c++) {
-        var col = MERCHANT_COLUMNS[c];
-        var idx = info.index[col];
-        arr[c] = normalizeMerchantValue_(col, idx === undefined ? '' : row[idx], tz, pad);
+    var kodes = sheet.getRange(2, kcol + 1, lastRow - 1, 1).getValues();
+    var matches = branchMatchIndexes_(kodes, kode, pad);
+    if (!matches.length) return result;
+    var segments = planSegments_(matches, kodes.length);
+
+    // waste = baris bukan milik cabang yang ikut terbaca. Besar => data tersebar (lambat).
+    var covered = 0;
+    for (var s = 0; s < segments.length; s++) covered += segments[s].end - segments[s].start + 1;
+    var waste = covered - matches.length;
+    if (waste > Math.max(MERCHANT_SCAN_MIN_ROWS, kodes.length * MERCHANT_SCAN_FULL_RATIO)) result.scan_mode = 'full';
+    else if (segments.length > 1) result.scan_mode = 'runs';
+
+    var seen = {};
+    for (s = 0; s < segments.length; s++) {
+      for (var off = segments[s].start; off <= segments[s].end; off += MERCHANT_SCAN_CHUNK_ROWS) {
+        var n = Math.min(MERCHANT_SCAN_CHUNK_ROWS, segments[s].end - off + 1);
+        var block = sheet.getRange(2 + off, 1, n, lastCol).getValues();
+        for (var r = 0; r < block.length; r++) {
+          var row = block[r];
+          if (normKode_(row[kcol], pad) !== kode) continue;
+          var storeId = str_(row[sidCol]);
+          if (!storeId) continue;
+          if (seen[storeId]) { result.duplicates++; continue; }
+          seen[storeId] = true;
+          var arr = new Array(MERCHANT_COLUMNS.length);
+          for (var c = 0; c < MERCHANT_COLUMNS.length; c++) {
+            var col = MERCHANT_COLUMNS[c];
+            var idx = info.index[col];
+            arr[c] = normalizeMerchantValue_(col, idx === undefined ? '' : row[idx], tz, pad);
+          }
+          result.rows.push(arr);
+        }
       }
-      result.rows.push(arr);
     }
     return result;
   });
@@ -93,7 +134,7 @@ function rowToMerchant_(arr) {
 
 /**
  * Bangun tampilan cabang: setiap merchant diperkaya dengan kategori USAK (dari
- * grading_usak + UsakConfig), ringkasan follow-up terakhir, dan skor prioritas.
+ * kolom sumber USAK + UsakConfig), ringkasan follow-up terakhir, dan skor prioritas.
  */
 function buildBranchView_(ctx, cfg) {
   var data = loadBranchMerchants_(ctx, cfg);
@@ -105,7 +146,7 @@ function buildBranchView_(ctx, cfg) {
   var items = [];
   for (var i = 0; i < data.rows.length; i++) {
     var m = rowToMerchant_(data.rows[i]);
-    var kategori = classifyUsak_(m.grading_usak, cfg.usak);
+    var kategori = classifyUsak_(m[cfg.usak.source], cfg.usak);
     var fu = followUpSummary_(latest[m.store_id] || null, cfg, today, tz);
     var virtuals = {
       _kategori_usak: kategori,
@@ -132,6 +173,7 @@ function buildBranchView_(ctx, cfg) {
     missing_columns: data.missing_columns,
     duplicates: data.duplicates,
     loaded_at: data.loaded_at,
+    scan_mode: data.scan_mode || 'block',
   };
 }
 
@@ -222,8 +264,9 @@ function parseListParams_(payload, cfg) {
 
   var filters = {};
   var rawFilters = payload.filters || {};
-  for (var i = 0; i < MERCHANT_FILTER_COLUMNS.length; i++) {
-    var col = MERCHANT_FILTER_COLUMNS[i];
+  var filterCols = merchantFilterColumns_(cfg);
+  for (var i = 0; i < filterCols.length; i++) {
+    var col = filterCols[i];
     var vals = toStringArray_(rawFilters[col]).map(function (x) { return normKey_(x); });
     if (vals.length) filters[col] = vals;
   }
@@ -325,12 +368,13 @@ function sortItems_(items, field, dir) {
   });
 }
 
-function usakInfo_(kategori, m) {
+function usakInfo_(kategori, m, source) {
   return {
     kategori: kategori,
     label: USAK_KATEGORI_LABELS[kategori],
     perlu_dicek: kategori === USAK_KATEGORI.KOSONG || kategori === USAK_KATEGORI.TIDAK_DIKENALI,
-    grading_usak: m.grading_usak,
+    nilai: m[source],
+    source_column: source,
   };
 }
 
@@ -338,10 +382,11 @@ function priorityInfo_(it) {
   return { score: it.score, reasons: it.reasons, perlu_follow_up: it.perlu };
 }
 
-function listItem_(it) {
+function listItem_(it, cfg) {
   var out = {};
-  for (var i = 0; i < MERCHANT_LIST_COLUMNS.length; i++) out[MERCHANT_LIST_COLUMNS[i]] = it.m[MERCHANT_LIST_COLUMNS[i]];
-  out.usak = usakInfo_(it.kategori, it.m);
+  var cols = merchantListColumns_(cfg);
+  for (var i = 0; i < cols.length; i++) out[cols[i]] = it.m[cols[i]];
+  out.usak = usakInfo_(it.kategori, it.m, cfg.usak.source);
   out.follow_up = it.fu;
   out.priority = priorityInfo_(it);
   return out;
@@ -360,7 +405,7 @@ function listMerchants_(ctx, payload) {
   var searchFields = ['store_name', 'store_id', 'owner_name'];
   if (ctx.permissions.search_account_number) searchFields.push('account_number');
   return {
-    items: filtered.slice(start, start + p.page_size).map(listItem_),
+    items: filtered.slice(start, start + p.page_size).map(function (it) { return listItem_(it, cfg); }),
     page: page,
     page_size: p.page_size,
     total: total,
@@ -370,6 +415,7 @@ function listMerchants_(ctx, payload) {
     dir: p.dir,
     search_fields: searchFields,
     usak_configured: cfg.usak.configured,
+    usak_source: cfg.usak.source,
     today: view.today,
   };
 }
@@ -380,8 +426,9 @@ function filterOptions_(ctx) {
   var data = loadBranchMerchants_(ctx, cfg);
   var colIdx = merchantColIndex_();
   var out = {};
-  for (var f = 0; f < MERCHANT_FILTER_COLUMNS.length; f++) {
-    var col = MERCHANT_FILTER_COLUMNS[f];
+  var filterCols = merchantFilterColumns_(cfg);
+  for (var f = 0; f < filterCols.length; f++) {
+    var col = filterCols[f];
     var counts = {}, labels = {};
     for (var i = 0; i < data.rows.length; i++) {
       var raw = str_(data.rows[i][colIdx[col]]);
@@ -392,7 +439,7 @@ function filterOptions_(ctx) {
     var list = [];
     for (var k in counts) {
       var item = { value: k === '' ? BLANK_FILTER_VALUE : labels[k], label: k === '' ? '(Kosong)' : labels[k], count: counts[k] };
-      if (col === 'grading_usak') item.kategori = classifyUsak_(labels[k], cfg.usak);
+      if (col === cfg.usak.source) item.kategori = classifyUsak_(labels[k], cfg.usak);
       list.push(item);
     }
     list.sort(function (a, b) {
@@ -414,6 +461,7 @@ function filterOptions_(ctx) {
     status_follow_up: cfg.options.status_follow_up.map(function (o) { return { value: o.kode, label: o.label }; }),
     sort_fields: Object.keys(MERCHANT_SORT_FIELDS),
     usak_configured: cfg.usak.configured,
+    usak_source: cfg.usak.source,
   };
 }
 
@@ -430,6 +478,7 @@ function merchantDetail_(ctx, payload) {
   for (var i = 0; i < MERCHANT_COLUMNS.length; i++) {
     var col = MERCHANT_COLUMNS[i];
     if (SENSITIVE_FINANCIAL_COLUMNS.indexOf(col) >= 0) continue;
+    if (col === 'grading_usak' && cfg.usak.source !== 'grading_usak') continue;
     merchant[col] = SENSITIVE_IDENTITY_COLUMNS.indexOf(col) >= 0 ? maskValue_(it.m[col], 4) : it.m[col];
   }
   var history = followUpsForStore_(view.followUps, storeId).map(function (f) { return publicFollowUp_(f, ctx, cfg); });
@@ -439,7 +488,7 @@ function merchantDetail_(ctx, payload) {
     restricted_fields: SENSITIVE_FINANCIAL_COLUMNS,
     can_reveal_identity: ctx.permissions.view_sensitive,
     can_reveal_financial: ctx.permissions.view_financial,
-    usak: usakInfo_(it.kategori, it.m),
+    usak: usakInfo_(it.kategori, it.m, cfg.usak.source),
     usak_configured: cfg.usak.configured,
     follow_up: it.fu,
     priority: priorityInfo_(it),

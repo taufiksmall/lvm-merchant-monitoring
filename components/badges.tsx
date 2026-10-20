@@ -3,7 +3,7 @@ import { fmtDate, relativeDays } from "@/lib/format";
 import type { FollowUpSummary, PriorityInfo, UsakInfo } from "@/lib/types";
 import { Badge } from "./ui";
 
-/** Kategori USAK dari grading_usak + UsakConfig. Status selalu ikon + label, bukan warna saja. */
+/** Kategori USAK dari kolom sumber USAK + UsakConfig. Status selalu ikon + label, bukan warna saja. */
 export function UsakBadge({ usak, configured = true }: { usak: UsakInfo; configured?: boolean }) {
   if (usak.kategori === "USAK") {
     return <Badge tone="good" icon={<CheckCircle2 aria-hidden className="size-3.5" />}>USAK{!configured && " (sementara)"}</Badge>;

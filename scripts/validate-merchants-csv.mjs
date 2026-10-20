@@ -6,7 +6,8 @@
  *   npm run validate:csv -- data/merchants.csv
  *   npm run validate:csv -- data/merchants.csv --usak-config=data/usak_config.csv --out=bersih.csv --report=laporan.csv
  *
- * --usak-config  CSV dengan header nilai_grading_usak,kategori,keterangan (untuk memeriksa nilai grading_usak)
+ * --usak-config  CSV dengan header nilai_kolom_usak,kategori,keterangan (untuk memeriksa nilai kolom sumber USAK)
+ * --source       kolom sumber USAK: grading_trx (bawaan) atau grading_usak
  * --out          tulis baris valid dengan header resmi & format angka/tanggal yang dinormalisasi
  * --report       tulis daftar masalah (baris, store_id, kolom, tingkat, masalah)
  * --pad=N        samakan dengan Settings KODE_CABANG_PAD_LENGTH bila dipakai
@@ -42,7 +43,11 @@ if (usakFile) {
     rt.spreadsheet.getSheetByName('UsakConfig').getRange(2, 1, usak.length - 1, usak[0].length).setValues(usak.slice(1));
   }
 }
-const usakCfg = rt.run('loadUsakConfig_');
+const usakCfg = rt.run('loadUsakConfig_', { USAK_SOURCE_COLUMN: opt('source') || 'grading_trx' });
+if (usakCfg.source_invalid) {
+  console.error(`--source harus grading_trx atau grading_usak (diberikan: ${usakCfg.source_invalid}).`);
+  process.exit(1);
+}
 const res = rt.context.validateMerchantTable_(table[0], table.slice(1), { usak: usakCfg, tz: 'Asia/Jakarta', pad: opt('pad') });
 
 console.log(`File: ${file}`);

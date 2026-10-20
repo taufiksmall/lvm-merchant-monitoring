@@ -4,7 +4,7 @@ Website untuk petugas cabang memantau performa merchant LVM dan menentukan merch
 
 - Petugas login dengan **kode cabang + kata sandi** yang dikelola administrator di Google Sheets.
 - Setelah login, petugas **hanya** melihat merchant dengan `kode_cabang_final` = cabangnya. Pembatasan ini dilakukan di backend (Apps Script), bukan di browser.
-- Dashboard: total merchant, merchant USAK (dari `grading_usak`), rasio USAK, gap menuju 50%, distribusi status, ringkasan MTD/YTD/30 hari, dan merchant prioritas.
+- Dashboard: total merchant, merchant USAK (dari kolom acuan USAK, bawaan `grading_trx`), rasio USAK, gap menuju 50%, distribusi status, ringkasan MTD/YTD/30 hari, dan merchant prioritas.
 - Daftar merchant dengan pencarian, filter, pengurutan, dan pagination di server; detail merchant; pencatatan follow-up & progres USAK.
 
 ## Arsitektur
@@ -77,7 +77,7 @@ Perintah lain:
 
 1. [Siapkan Google Spreadsheet & Apps Script](docs/03-apps-script.md) — buat spreadsheet, tempel kode, jalankan **LVM Admin › Setup**, isi Script Properties, deploy Web App.
 2. [Isi sheet & akun](docs/02-google-sheets.md) — struktur setiap sheet, cara menambah pengguna, membuat hash, menonaktifkan akun, role.
-3. [Konfigurasi USAK, prioritas, dan status follow-up](docs/04-konfigurasi-usak.md) — **wajib** mengisi nilai `grading_usak` resmi di sheet `UsakConfig`.
+3. [Konfigurasi USAK, prioritas, dan status follow-up](docs/04-konfigurasi-usak.md) — definisi USAK bawaan (`grading_trx`) dan cara menambah nilai baru di sheet `UsakConfig`.
 4. [Impor data merchant](docs/05-impor-data.md).
 5. [Deploy frontend ke Vercel](docs/06-vercel.md).
 
@@ -85,6 +85,6 @@ Referensi API Apps Script: [docs/07-api.md](docs/07-api.md).
 
 ## Yang perlu ditentukan bisnis
 
-- **Nilai `grading_usak` yang berarti USAK / belum USAK.** Aplikasi tidak menebak; selama `UsakConfig` kosong, dashboard menampilkan peringatan "Definisi USAK belum dikonfigurasi" dan angka USAK ditandai belum final.
+- **Definisi USAK** (kolom acuan `grading_trx`): `USAK`, `USAK IDEAL`, `USAK OPTIMAL` = USAK; `UREG > 0`, `UREG = 0` = belum USAK (dikonfirmasi pemilik bisnis; diisi otomatis oleh setup). Nilai lain tidak dihitung USAK dan ditandai "tidak dikenali" sampai ditambahkan di `UsakConfig`. Bila `UsakConfig` dikosongkan, dashboard menampilkan "Definisi USAK belum dikonfigurasi" dan angka USAK ditandai belum final.
 - **Aturan merchant prioritas.** Aturan bawaan hanya memakai kategori USAK dan status follow-up; aturan berbasis ambang transaksi disediakan sebagai contoh nonaktif.
 - **Arti kolom saldo** (`cbalrp`, `ybal`, `avgbalrp`, `amtcrc`, `amtdrc`): ditampilkan dengan nama kolom aslinya dan hanya untuk role yang diizinkan.

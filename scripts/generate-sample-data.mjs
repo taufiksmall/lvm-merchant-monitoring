@@ -5,10 +5,10 @@
  *   node scripts/generate-sample-data.mjs
  *
  * Menghasilkan file di sample-data/:
- *   merchants.sample.csv   - 42 kolom sesuai header sheet Merchants (termasuk beberapa baris
- *                            bermasalah untuk menguji validasi impor)
+ *   merchants.sample.csv   - 41 kolom (header sheet Merchants tanpa grading_usak, seperti data sumber
+ *                            sebenarnya) termasuk beberapa baris bermasalah untuk menguji validasi impor
  *   users.sample.csv       - akun demo dengan password_hash (kata sandi demo ada di sample-data/README.md)
- *   usak_config.sample.csv - CONTOH pemetaan grading_usak untuk data sintetis ini saja
+ *   usak_config.sample.csv - pemetaan nilai grading_trx -> kategori (sama dengan bawaan setup Apps Script)
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -19,6 +19,8 @@ import { toCsv } from './lib/csv.mjs';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const outDir = path.join(root, 'sample-data');
 
+// Data sumber memakai grading_trx sebagai acuan USAK dan tidak memiliki kolom grading_usak.
+const OUTPUT_EXCLUDED = new Set(['grading_usak']);
 const MERCHANT_COLUMNS = [
   'store_id', 'store_name', 'account_number', 'owner_name', 'createddate', 'referal_code',
   'kode_pos', 'address', 'kecamatan', 'kabupaten', 'provinsi', 'mcc_code', 'lob_lm',
@@ -104,9 +106,14 @@ function merchantRow(branch, seq, grading) {
     mid_static: 'MS' + digits(10),
     mid_dynamic: rand() < 0.5 ? 'MD' + digits(10) : '',
     flag_card_dongle: rand() < 0.25 ? 'Y' : 'N',
-    status_trx: freq30 > 0 ? 'AKTIF' : (freqYtd > 0 ? 'PASIF' : 'TIDAK AKTIF'),
-    grading_trx: freqMtd >= 150 ? 'A' : freqMtd >= 60 ? 'B' : freqMtd > 0 ? 'C' : 'D',
-    grading_usak: grading,
+    status_trx: grading === 'USAK' ? 'ACTIVE' : grading === 'NON USAK' ? 'INACTIVE' : (freq30 > 0 ? 'ACTIVE' : 'INACTIVE'),
+    // Nilai sintetis: USAK | USAK IDEAL | USAK OPTIMAL | UREG > 0 | UREG = 0 | kosong | N/A
+    // (N/A = nilai tak dikenal untuk menguji validasi). Varian USAK ditentukan dari nomor urut, bukan acak.
+    grading_trx: grading === 'NON USAK'
+      ? (freqMtd > 0 ? 'UREG > 0' : 'UREG = 0')
+      : grading === 'USAK'
+        ? (seq % 10 === 0 ? 'USAK IDEAL' : seq % 7 === 0 ? 'USAK OPTIMAL' : 'USAK')
+        : grading,
     tipe_akun: companytype === 'PERORANGAN' ? 'INDIVIDU' : 'BADAN USAHA',
     status_rekening: rand() < 0.9 ? 'AKTIF' : 'DORMANT',
     tangging_real_merchant: rand() < 0.85 ? 'REAL' : 'NON REAL',
@@ -147,14 +154,15 @@ const broken1 = merchantRow(garut, 9001, 'NON USAK');
 broken1.store_name = ''; // ERROR: wajib diisi -> baris dilewati
 const broken2 = merchantRow(garut, 9002, 'USAK');
 broken2.store_id = rows.find((r) => r.kode_cabang_final === '0201').store_id; // ERROR: store_id ganda
-const warn1 = rows.find((r) => r.kode_cabang_final === '0201' && r.grading_usak === 'NON USAK');
+const warn1 = rows.find((r) => r.kode_cabang_final === '0201' && String(r.grading_trx).startsWith('UREG'));
 warn1.sv_ytd = '12,3,4'; // PERINGATAN: angka tidak valid
 const warn2 = rows.filter((r) => r.kode_cabang_final === '0201')[5];
 warn2.createddate = '31/02/2024'; // PERINGATAN: tanggal tidak valid
 rows.push(broken1, broken2);
 
 fs.mkdirSync(outDir, { recursive: true });
-fs.writeFileSync(path.join(outDir, 'merchants.sample.csv'), toCsv(MERCHANT_COLUMNS, rows.map((r) => MERCHANT_COLUMNS.map((c) => r[c]))));
+const OUTPUT_COLUMNS = MERCHANT_COLUMNS.filter((c) => !OUTPUT_EXCLUDED.has(c));
+fs.writeFileSync(path.join(outDir, 'merchants.sample.csv'), toCsv(OUTPUT_COLUMNS, rows.map((r) => OUTPUT_COLUMNS.map((c) => r[c]))));
 
 // Akun demo. Kata sandi HANYA untuk emulator lokal; jangan dipakai di spreadsheet produksi.
 const DEMO_USERS = [
@@ -169,12 +177,15 @@ const userRows = DEMO_USERS.map(([id, kode, nama, role, active, pw]) => [id, kod
 fs.writeFileSync(path.join(outDir, 'users.sample.csv'),
   toCsv(['user_id', 'kode_cabang', 'nama_cabang', 'password_hash', 'role', 'is_active'], userRows));
 
-fs.writeFileSync(path.join(outDir, 'usak_config.sample.csv'), toCsv(['nilai_grading_usak', 'kategori', 'keterangan'], [
-  ['USAK', 'USAK', 'CONTOH untuk data sintetis. Ganti dengan nilai resmi.'],
-  ['NON USAK', 'BELUM_USAK', 'CONTOH untuk data sintetis. Ganti dengan nilai resmi.'],
+fs.writeFileSync(path.join(outDir, 'usak_config.sample.csv'), toCsv(['nilai_kolom_usak', 'kategori', 'keterangan'], [
+  ['USAK', 'USAK', 'Sama dengan bawaan setup (dikonfirmasi pemilik bisnis).'],
+  ['USAK IDEAL', 'USAK', 'Sama dengan bawaan setup (dikonfirmasi pemilik bisnis).'],
+  ['USAK OPTIMAL', 'USAK', 'Sama dengan bawaan setup (dikonfirmasi pemilik bisnis).'],
+  ['UREG > 0', 'BELUM_USAK', 'Sama dengan bawaan setup (dikonfirmasi pemilik bisnis).'],
+  ['UREG = 0', 'BELUM_USAK', 'Sama dengan bawaan setup (dikonfirmasi pemilik bisnis).'],
 ]));
 
 const count = (kode) => rows.filter((r) => r.kode_cabang_final === kode).length;
 console.log(`merchants.sample.csv: ${rows.length} baris (${BRANCHES.map((b) => `${b.kode}=${count(b.kode)}`).join(', ')})`);
 console.log(`users.sample.csv: ${userRows.length} akun demo`);
-console.log('usak_config.sample.csv: 2 baris contoh');
+console.log('usak_config.sample.csv: 5 baris');

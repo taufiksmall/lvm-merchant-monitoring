@@ -26,7 +26,7 @@ Ada dua lapis API:
 | `GET /api/auth/me` | `auth.me` | Profil sesi + izin role |
 | `GET /api/auth/session-expired` | — | Menghapus cookie lalu redirect ke `/login` |
 | `GET /api/dashboard` | `dashboard.summary` | Ringkasan cabang |
-| `GET /api/merchants` | `merchants.list` | Query: `q, page, page_size, sort, dir, follow_up, status_follow_up, kategori_usak, status_trx, grading_trx, grading_usak, Tiering, status_rekening, flag_card_dongle, nama_area_final` (filter boleh berulang) |
+| `GET /api/merchants` | `merchants.list` | Query: `q, page, page_size, sort, dir, follow_up, status_follow_up, kategori_usak, status_trx, grading_trx, Tiering, status_rekening, flag_card_dongle, nama_area_final` (filter boleh berulang; `grading_usak` hanya berlaku bila menjadi kolom acuan USAK) |
 | `GET /api/merchants/filter-options` | `merchants.filterOptions` | Nilai unik filter di cabang |
 | `GET /api/merchants/:storeId` | `merchants.detail` | Detail tersamarkan + riwayat follow-up |
 | `POST /api/merchants/:storeId/reveal` | `merchants.revealSensitive` | Body `{group: "identity" \| "financial"}` |
@@ -57,6 +57,8 @@ Semua aksi kecuali `auth.login` mewajibkan `token`. Cabang pengguna **selalu** d
 | `followups.list` | `store_id` | `items` |
 | `followups.create` | `store_id`, `status_follow_up`, `catatan`, `tanggal_follow_up_berikutnya`, `progres_usak` | follow-up baru |
 | `followups.update` | `follow_up_id` + field yang diubah | follow-up hasil ubah |
+
+Setiap objek `usak` berisi `{kategori, label, perlu_dicek, nilai, source_column}`; `nilai` adalah isi kolom acuan USAK (bawaan `grading_trx`) dan `source_column` namanya. Respons dashboard memuat `usak.source_column` dan `distribusi.usak_source`; respons daftar & opsi filter memuat `usak_source`.
 
 Nilai khusus:
 

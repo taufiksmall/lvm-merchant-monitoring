@@ -1,7 +1,7 @@
 user_id,kode_cabang,nama_cabang,password_hash,role,is_active
-U0101,0101,KC Contoh Bandung,pbkdf2_sha256$100000$OrogBn/7Lbx9SnCM6/GxpA==$Wxo8aidCUsvYw+Ba74/Lr1WTk2mMo2yw6b1JfPZFt3M=,petugas,TRUE
-U0101S,0101,KC Contoh Bandung,pbkdf2_sha256$100000$akRgGyPDaMI87VjZSweM6g==$kN8pi4oUQ84X34/hPpdRuZhU+C4Gz3enjPZwqSnq4QU=,supervisor,TRUE
-U0102,0102,KC Contoh Cimahi,pbkdf2_sha256$100000$m8W8/Zb+2CFnCsTegdUl+Q==$JCmhglk0wgxqRJaY5M7DPPa1YCwnm8dujNxo9pxIx5E=,petugas,TRUE
-U0201,0201,KC Contoh Garut,pbkdf2_sha256$100000$+5nkiNap1U4PDuSGoeLXxQ==$43urtY5NH9U4gYDz8yYExKBileR1XNnnOn0BM63Htl8=,petugas,TRUE
-U0301,0301,KC Contoh Tasikmalaya,pbkdf2_sha256$100000$vD1eSoiXJdNSn1QZTLn9dw==$ipTzdjCBZQBlXHN3xunhcnRVjRWvBRhJCDzTuOyNkqo=,petugas,FALSE
-U0401,0401,KC Contoh Sumedang,pbkdf2_sha256$100000$CPzmB+xIEvW+KPpwVqh91g==$MMs8s1mUIT1rwBP5V5f6haaZEZUMW8Cu4u1ju8mStes=,petugas,TRUE
+U0101,0101,KC Contoh Bandung,pbkdf2_sha256$100000$hgrdUyehdL7O7SJNDMMTeQ==$BzAOozW63ziMoI5HSvn3F35RUVHbwbwHU+Zgl2GeyPA=,petugas,TRUE
+U0101S,0101,KC Contoh Bandung,pbkdf2_sha256$100000$KcHxOVX4cTPDhQuzCO047w==$F52hJdsH4tWCUjcDFP2UhjcaYrM+2N+VDFt7dco5BCc=,supervisor,TRUE
+U0102,0102,KC Contoh Cimahi,pbkdf2_sha256$100000$uQpBJ4B36Dg+a1pIY3OYkw==$cs+/vIw5Dy4EQrXqC72/aNo/Guo/9GjAOtTWS/0VECA=,petugas,TRUE
+U0201,0201,KC Contoh Garut,pbkdf2_sha256$100000$t6/5YgJ1K+ZpL+Z2TWgO3A==$oFFq0f/9v65KLv9IGw/B62WdhDxwQfzElZILzrTabHY=,petugas,TRUE
+U0301,0301,KC Contoh Tasikmalaya,pbkdf2_sha256$100000$ANP+1iUC+prkVJtPEYVV5g==$AWaTZSLuQZD5DCOqsUOmm4+E43rJovxVG2nIKIyEIpY=,petugas,FALSE
+U0401,0401,KC Contoh Sumedang,pbkdf2_sha256$100000$JDm83fupgGHSxOwyeHmUKg==$zbg5d774X/Cl9GauwDxp41I9b+8HpDaADxdWPiFI6N8=,petugas,TRUE

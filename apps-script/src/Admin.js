@@ -20,7 +20,9 @@ function onOpen() {
       .addItem('Bersihkan sesi kedaluwarsa', 'cleanupExpiredSessions')
       .addItem('Pasang pembersihan sesi harian', 'installCleanupTrigger')
       .addSeparator()
-      .addItem('Isi daftar nilai grading_usak ke UsakConfig', 'fillGradingUsakValues')
+      .addItem('Isi daftar nilai kolom USAK ke UsakConfig', 'fillUsakValues')
+      .addItem('Validasi sheet Merchants (langsung)', 'validateMerchantsSheet')
+      .addItem('Urutkan Merchants per cabang', 'sortMerchantsByBranch')
       .addItem('Validasi impor (Import_Merchants)', 'validateImport')
       .addItem('Terapkan impor ke Merchants', 'applyImport')
       .addItem('Bersihkan cache aplikasi', 'clearAppCache')
@@ -93,7 +95,7 @@ function setupSheets_() {
     { name: SHEETS.FOLLOW_UPS, headers: SHEET_SCHEMAS.FollowUps, text: SHEET_TEXT_COLUMNS.FollowUps },
     { name: SHEETS.SESSIONS, headers: SHEET_SCHEMAS.Sessions, text: SHEET_TEXT_COLUMNS.Sessions },
     { name: SHEETS.ROLES, headers: SHEET_SCHEMAS.Roles, defaults: DEFAULT_ROLES },
-    { name: SHEETS.USAK_CONFIG, headers: SHEET_SCHEMAS.UsakConfig, text: SHEET_TEXT_COLUMNS.UsakConfig },
+    { name: SHEETS.USAK_CONFIG, headers: SHEET_SCHEMAS.UsakConfig, text: SHEET_TEXT_COLUMNS.UsakConfig, defaults: DEFAULT_USAK_CONFIG },
     { name: SHEETS.PRIORITY_RULES, headers: SHEET_SCHEMAS.PriorityRules, text: SHEET_TEXT_COLUMNS.PriorityRules, defaults: DEFAULT_PRIORITY_RULES },
     { name: SHEETS.OPTIONS, headers: SHEET_SCHEMAS.Options, defaults: DEFAULT_OPTIONS },
     { name: SHEETS.SETTINGS, headers: SHEET_SCHEMAS.Settings, text: SHEET_TEXT_COLUMNS.Settings },
@@ -127,7 +129,7 @@ function setupSheets_() {
   }
   var usak = loadUsakConfigSafe_();
   if (!usak || !usak.configured) {
-    lines.push('PERHATIAN: UsakConfig belum berisi nilai grading_usak berkategori USAK. Isi sesuai definisi bisnis resmi.');
+    lines.push('PERHATIAN: UsakConfig belum berisi nilai kolom sumber USAK berkategori USAK. Isi sesuai definisi bisnis resmi.');
   }
   bumpVersion_('CONFIG_VERSION');
   if (!lines.length) lines.push('Struktur sheet sudah sesuai. Tidak ada perubahan.');
@@ -135,7 +137,7 @@ function setupSheets_() {
 }
 
 function loadUsakConfigSafe_() {
-  try { return loadUsakConfig_(); } catch (e) { return null; }
+  try { return loadUsakConfig_(loadSettings_()); } catch (e) { return null; }
 }
 
 /** Pastikan baris 1 berisi header yang dibutuhkan; header yang hilang ditambahkan di akhir. */
@@ -227,6 +229,13 @@ function checkSetup_() {
   }
   clearConfigMemo_();
   var cfg = loadConfig_();
+  var layout = merchantBranchLayout_();
+  if (layout.rows) {
+    lines.push('Merchants: ' + layout.rows + ' baris, ' + layout.branches + ' cabang, ' +
+      (layout.sorted ? 'terurut per cabang (pemuatan cepat)'
+        : 'TIDAK terurut per cabang (' + layout.segments + ' segmen) — jalankan "Urutkan Merchants per cabang"'));
+  }
+  lines.push('Kolom sumber USAK: ' + cfg.usak.source + (cfg.usak.source_invalid ? ' (Settings USAK_SOURCE_COLUMN "' + cfg.usak.source_invalid + '" tidak valid; memakai bawaan)' : ''));
   lines.push('UsakConfig: ' + cfg.usak.usak_values + ' nilai USAK, ' + cfg.usak.belum_usak_values + ' nilai BELUM_USAK' +
     (cfg.usak.unfilled_values.length ? ', ' + cfg.usak.unfilled_values.length + ' belum berkategori' : '') +
     (cfg.usak.invalid_rows.length ? ', ' + cfg.usak.invalid_rows.length + ' tidak valid' : ''));
@@ -392,21 +401,25 @@ function cleanupSessionsTrigger() {
 /* ------------------------------------------------------------------ */
 
 /**
- * Tambahkan nilai grading_usak yang ditemukan di data ke UsakConfig dengan kategori kosong.
- * Tidak menebak kategori: admin wajib mengisi kategori sesuai definisi bisnis resmi.
+ * Tambahkan nilai unik kolom sumber USAK (Settings USAK_SOURCE_COLUMN) yang ditemukan di data
+ * ke UsakConfig dengan kategori kosong. Tidak menebak kategori: admin wajib mengisinya
+ * sesuai definisi bisnis resmi.
  */
-function fillGradingUsakValues() {
-  return runAdmin_('Nilai grading_usak', fillGradingUsakValues_);
+function fillUsakValues() {
+  return runAdmin_('Nilai kolom USAK', fillUsakValues_);
 }
 
-function fillGradingUsakValues_() {
+function fillUsakValues_() {
+  var cfg = loadConfig_();
+  var source = cfg.usak.source;
   var sheet = getSheet_(SHEETS.MERCHANTS);
   var info = readHeaderInfo_(sheet, MERCHANT_COLUMNS);
-  assertHeaders_(SHEETS.MERCHANTS, info, ['grading_usak']);
+  assertHeaders_(SHEETS.MERCHANTS, info, [source]);
   var lastRow = sheet.getLastRow();
   var counts = {}, labels = {};
-  if (lastRow >= 2) {
-    var vals = sheet.getRange(2, info.index.grading_usak + 1, lastRow - 1, 1).getValues();
+  for (var start = 2; start <= lastRow; start += MERCHANT_SCAN_CHUNK_ROWS * 4) {
+    var n = Math.min(MERCHANT_SCAN_CHUNK_ROWS * 4, lastRow - start + 1);
+    var vals = sheet.getRange(start, info.index[source] + 1, n, 1).getValues();
     for (var i = 0; i < vals.length; i++) {
       var raw = str_(vals[i][0]);
       if (!raw) continue;
@@ -415,19 +428,73 @@ function fillGradingUsakValues_() {
       if (!labels[k]) labels[k] = raw;
     }
   }
-  var existing = readTable_(SHEETS.USAK_CONFIG, { required: ['nilai_grading_usak', 'kategori'] }).rows;
+  var existing = readTable_(SHEETS.USAK_CONFIG, { required: ['nilai_kolom_usak', 'kategori'] }).rows;
   var have = {};
-  for (i = 0; i < existing.length; i++) have[normKey_(existing[i].nilai_grading_usak)] = true;
+  for (i = 0; i < existing.length; i++) have[normKey_(existing[i].nilai_kolom_usak)] = true;
   var rows = [];
   for (var key in counts) {
-    if (!have[key]) rows.push([labels[key], '', 'Ditemukan di data (' + counts[key] + ' merchant). Isi kategori: USAK atau BELUM_USAK.']);
+    if (!have[key]) rows.push([labels[key], '', 'Ditemukan di kolom ' + source + ' (' + counts[key] + ' merchant). Isi kategori: USAK atau BELUM_USAK.']);
   }
   if (rows.length) writeRowsByHeader_(getSheet_(SHEETS.USAK_CONFIG), SHEET_SCHEMAS.UsakConfig, rows);
   bumpVersion_('CONFIG_VERSION');
-  var lines = [rows.length + ' nilai baru ditambahkan ke UsakConfig (kategori dikosongkan).'];
+  var lines = ['Kolom sumber USAK: ' + source, rows.length + ' nilai baru ditambahkan ke UsakConfig (kategori dikosongkan).'];
   lines.push('Nilai yang ditemukan: ' + Object.keys(counts).map(function (k) { return labels[k] + ' (' + counts[k] + ')'; }).join(', '));
   lines.push('Lengkapi kolom kategori sesuai definisi bisnis resmi, lalu jalankan "Bersihkan cache aplikasi".');
   return lines;
+}
+
+function validateMerchantsSheet() {
+  return runAdmin_('Validasi sheet Merchants', validateMerchantsSheetInPlace_);
+}
+
+/**
+ * Urutkan baris Merchants menurut kode_cabang_final lalu store_id. Data satu cabang menjadi
+ * satu blok sehingga login pertama tiap cabang cepat. Aman dijalankan berulang.
+ */
+function sortMerchantsByBranch() {
+  return runAdmin_('Urutkan Merchants', sortMerchantsByBranch_);
+}
+
+function sortMerchantsByBranch_() {
+  var sheet = getSheet_(SHEETS.MERCHANTS);
+  var info = readHeaderInfo_(sheet, MERCHANT_COLUMNS);
+  assertHeaders_(SHEETS.MERCHANTS, info, ['kode_cabang_final', 'store_id']);
+  var lastRow = sheet.getLastRow(), lastCol = sheet.getLastColumn();
+  if (lastRow < 3) return ['Tidak ada cukup baris untuk diurutkan.'];
+  withLock_(function () {
+    sheet.getRange(2, 1, lastRow - 1, lastCol).sort([
+      { column: info.index.kode_cabang_final + 1, ascending: true },
+      { column: info.index.store_id + 1, ascending: true },
+    ]);
+  });
+  bumpVersion_('DATA_VERSION');
+  var layout = merchantBranchLayout_();
+  return [
+    (lastRow - 1) + ' baris diurutkan menurut kode_cabang_final lalu store_id.',
+    'Cabang: ' + layout.branches + ', segmen: ' + layout.segments + (layout.sorted ? ' (terurut per cabang).' : ' (MASIH tidak terurut; periksa sel kode_cabang_final).'),
+    'Catatan: rumus atau referensi lain yang bergantung pada nomor baris perlu diperiksa.',
+  ];
+}
+
+/** Jumlah cabang dan segmen kontigu kode_cabang_final di sheet Merchants. */
+function merchantBranchLayout_() {
+  var sheet = getSheet_(SHEETS.MERCHANTS, true);
+  var out = { rows: 0, branches: 0, segments: 0, sorted: true };
+  if (!sheet || sheet.getLastRow() < 2) return out;
+  var info = readHeaderInfo_(sheet, MERCHANT_COLUMNS);
+  if (info.index.kode_cabang_final === undefined) return out;
+  var pad = loadConfig_().settings.KODE_CABANG_PAD_LENGTH;
+  var vals = sheet.getRange(2, info.index.kode_cabang_final + 1, sheet.getLastRow() - 1, 1).getValues();
+  var seen = {}, prev = null;
+  for (var i = 0; i < vals.length; i++) {
+    var k = normKode_(vals[i][0], pad);
+    if (k === '') continue;
+    out.rows++;
+    if (k !== prev) { out.segments++; prev = k; }
+    if (!seen[k]) { seen[k] = true; out.branches++; }
+  }
+  out.sorted = out.segments === out.branches;
+  return out;
 }
 
 function validateImport() {

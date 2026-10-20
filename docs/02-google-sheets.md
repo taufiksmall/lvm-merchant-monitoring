@@ -11,7 +11,7 @@ Aturan umum:
 
 ## Merchants
 
-42 kolom, nama persis seperti sumber data:
+Hingga 42 kolom, nama persis seperti sumber data. Kolom `grading_usak` bersifat **opsional** (sumber data yang ada hanya memiliki 41 kolom, tanpa `grading_usak`):
 
 ```
 store_id, store_name, account_number, owner_name, createddate, referal_code, kode_pos, address,
@@ -24,18 +24,19 @@ avgbalrp, amtcrc, amtdrc, Tiering
 
 | Ketentuan | Keterangan |
 |---|---|
-| Kolom wajib ada | `store_id`, `store_name`, `kode_cabang_final`, `nama_cabang_final`, `grading_usak` (bila hilang, API mengembalikan `HEADER_MISMATCH` beserta nama kolomnya). Kolom lain yang hilang tampil kosong + peringatan di dashboard. |
+| Nama sheet | Harus `Merchants`. Bila data Anda ada di sheet lain (mis. `Sheet1`), ganti namanya. |
+| Kolom wajib ada | `store_id`, `store_name`, `kode_cabang_final`, `nama_cabang_final`, dan **kolom acuan USAK** (bawaan `grading_trx`). Bila hilang, API mengembalikan `HEADER_MISMATCH` beserta nama kolomnya. Kolom lain yang hilang tampil kosong + peringatan di dashboard; `grading_usak` yang tidak dipakai sebagai acuan boleh tidak ada. |
 | `store_id` | Unik. Baris dengan `store_id` ganda dilewati dan dilaporkan. Karakter yang diizinkan: huruf, angka, `. _ - /`. |
 | `kode_cabang_final` | Menghubungkan merchant ke cabang (dibandingkan dengan `Users.kode_cabang`). |
-| `grading_usak` | Satu-satunya sumber status USAK (lihat [04-konfigurasi-usak.md](04-konfigurasi-usak.md)). |
+| `grading_trx` (bawaan) | **Kolom acuan USAK**: satu-satunya sumber status USAK. Kolom lain (termasuk `grading_usak`) diabaikan untuk status USAK kecuali Settings `USAK_SOURCE_COLUMN` diganti ke `grading_usak`. Lihat [04-konfigurasi-usak.md](04-konfigurasi-usak.md). |
 | Angka | Disarankan angka polos (`1234567.5`). Juga dikenali: `1.234.567`, `1.234.567,89`, `1,234,567.89`. |
 | `createddate` | `yyyy-mm-dd`, `dd/mm/yyyy`, atau tanggal Google Sheets. |
 
 Contoh baris (sintetis):
 
-| store_id | store_name | account_number | owner_name | createddate | kode_cabang_final | nama_cabang_final | nama_area_final | freq_mtd | sv_mtd | grading_trx | grading_usak | Tiering | … |
+| store_id | store_name | account_number | owner_name | createddate | kode_cabang_final | nama_cabang_final | nama_area_final | freq_mtd | sv_mtd | grading_trx | Tiering | … |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| S01010001 | Konter Harapan 1 | 9017000533193 | Bayu Rahayu | 2021-10-17 | 0101 | KC Contoh Bandung | Area Contoh Bandung Raya | 81 | 14256000 | B | NON USAK | Tier 2 | … |
+| S01010001 | Konter Harapan 1 | 9017000533193 | Bayu Rahayu | 2021-10-17 | 0101 | KC Contoh Bandung | Area Contoh Bandung Raya | 81 | 14256000 | UREG > 0 | Tier 2 | … |
 
 File lengkap: `sample-data/merchants.sample.csv`.
 
@@ -140,6 +141,7 @@ Lihat [04-konfigurasi-usak.md](04-konfigurasi-usak.md).
 | PRIORITY_MIN_SCORE | 1 | Skor minimal "perlu follow-up" |
 | LOGIN_MAX_ATTEMPTS | 5 | Batas gagal login per kode cabang |
 | LOGIN_LOCK_MINUTES | 15 | Lama kunci login |
+| USAK_SOURCE_COLUMN | grading_trx | Kolom Merchants yang menentukan status USAK: `grading_trx` atau `grading_usak` |
 | DEFAULT_PAGE_SIZE / MAX_PAGE_SIZE | 25 / 100 | Pagination |
 | KODE_CABANG_PAD_LENGTH | (kosong) | Isi mis. `4` bila kode cabang angka kehilangan nol di depan (`101` → `0101`) |
 | PBKDF2_ITERATIONS | 100000 | Iterasi hash baru dari menu admin |

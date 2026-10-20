@@ -15,14 +15,21 @@
 var IMPORT_LEVEL = { ERROR: 'ERROR', WARNING: 'PERINGATAN' };
 
 /**
+ * Validator bertahap: header diperiksa sekali, lalu baris ditambahkan per potongan lewat
+ * addRows() sehingga sheet besar tidak perlu dimuat sekaligus ke memori.
+ *
  * @param {Array} headers Header sumber.
- * @param {Array<Array>} rows Baris data (tanpa header).
- * @param {{usak: Object, tz: string, pad: string|number}} opts
+ * @param {{usak: Object, tz: string, pad: string|number, collectRows: boolean, maxIssues: number}} opts
+ *   collectRows=false: baris valid tidak disimpan (hanya dihitung). maxIssues membatasi daftar
+ *   masalah di memori; hitungan ringkasan tetap lengkap.
  */
-function validateMerchantTable_(headers, rows, opts) {
+function createMerchantValidator_(headers, opts) {
   opts = opts || {};
   var tz = opts.tz || 'Asia/Jakarta';
+  var collect = opts.collectRows !== false;
+  var maxIssues = opts.maxIssues || 100000;
   var usakCfg = opts.usak || { map: {}, configured: false };
+  var source = usakCfg.source || DEFAULT_USAK_SOURCE;
   var info = buildHeaderIndex_(headers, MERCHANT_COLUMNS);
   var issues = [];
   var seenHeaders = {}, dupHeaders = [];
@@ -32,94 +39,122 @@ function validateMerchantTable_(headers, rows, opts) {
     if (seenHeaders[hk]) dupHeaders.push(str_(headers[h]));
     seenHeaders[hk] = true;
   }
-  var missingRequired = MERCHANT_REQUIRED_COLUMNS.filter(function (c) { return info.index[c] === undefined; });
+  var requiredColumns = MERCHANT_REQUIRED_COLUMNS.concat([source]);
+  var missingRequired = requiredColumns.filter(function (c) { return info.index[c] === undefined; });
   var result = {
     header: { missing: info.missing, missing_required: missingRequired, extra: info.extra, non_canonical: info.nonCanonical, duplicate: dupHeaders },
     fatal: missingRequired.length > 0 || dupHeaders.length > 0,
     issues: issues,
+    issues_dropped: 0,
+    usak_source: source,
     validRows: [],
     summary: {
       total_baris: 0, baris_valid: 0, baris_error: 0, peringatan: 0,
-      grading_usak_kosong: 0, grading_usak_tidak_dikenali: 0, nilai_grading_usak_tidak_dikenali: [],
+      usak_kosong: 0, usak_tidak_dikenali: 0, nilai_usak_tidak_dikenali: [],
       per_cabang: {},
     },
+    addRows: function () {},
+    finish: function () { return result; },
   };
   if (result.fatal) return result;
 
   var seenIds = {};
   var unknownValues = {};
   var add = function (rowNum, storeId, kolom, masalah, level) {
-    issues.push({ baris: rowNum, store_id: storeId, kolom: kolom, masalah: masalah, tingkat: level });
+    if (issues.length < maxIssues) issues.push({ baris: rowNum, store_id: storeId, kolom: kolom, masalah: masalah, tingkat: level });
+    else result.issues_dropped++;
     if (level === IMPORT_LEVEL.WARNING) result.summary.peringatan++;
   };
 
-  for (var r = 0; r < rows.length; r++) {
-    var row = rows[r];
-    var rowNum = r + 2; // nomor baris di file/sheet sumber (baris 1 = header)
-    var empty = true;
-    for (var x = 0; x < row.length; x++) if (!isBlank_(row[x])) { empty = false; break; }
-    if (empty) continue;
-    result.summary.total_baris++;
-    var get = function (col) { var i = info.index[col]; return i === undefined ? '' : row[i]; };
-    var storeId = str_(get('store_id'));
-    var rowErrors = 0;
+  /** @param {Array<Array>} rows baris data; firstRowNum = nomor baris sumber untuk rows[0] (baris 1 = header). */
+  result.addRows = function (rows, firstRowNum) {
+    for (var r = 0; r < rows.length; r++) {
+      var row = rows[r];
+      var rowNum = firstRowNum + r;
+      var empty = true;
+      for (var x = 0; x < row.length; x++) if (!isBlank_(row[x])) { empty = false; break; }
+      if (empty) continue;
+      result.summary.total_baris++;
+      var get = function (col) { var i = info.index[col]; return i === undefined ? '' : row[i]; };
+      var storeId = str_(get('store_id'));
+      var rowErrors = 0;
 
-    for (var q = 0; q < MERCHANT_REQUIRED_VALUES.length; q++) {
-      if (isBlank_(get(MERCHANT_REQUIRED_VALUES[q]))) {
-        add(rowNum, storeId, MERCHANT_REQUIRED_VALUES[q], 'Wajib diisi.', IMPORT_LEVEL.ERROR);
-        rowErrors++;
+      for (var q = 0; q < MERCHANT_REQUIRED_VALUES.length; q++) {
+        if (isBlank_(get(MERCHANT_REQUIRED_VALUES[q]))) {
+          add(rowNum, storeId, MERCHANT_REQUIRED_VALUES[q], 'Wajib diisi.', IMPORT_LEVEL.ERROR);
+          rowErrors++;
+        }
       }
-    }
-    if (storeId) {
-      if (storeId.length > 64 || !/^[A-Za-z0-9._\-\/]+$/.test(storeId)) {
-        add(rowNum, storeId, 'store_id', 'Hanya boleh huruf, angka, titik, garis bawah, tanda hubung, atau garis miring (maks. 64).', IMPORT_LEVEL.ERROR);
-        rowErrors++;
-      } else if (seenIds[storeId]) {
-        add(rowNum, storeId, 'store_id', 'store_id ganda (pertama di baris ' + seenIds[storeId] + ').', IMPORT_LEVEL.ERROR);
-        rowErrors++;
-      } else {
-        seenIds[storeId] = rowNum;
+      if (storeId) {
+        if (storeId.length > 64 || !/^[A-Za-z0-9._\-\/]+$/.test(storeId)) {
+          add(rowNum, storeId, 'store_id', 'Hanya boleh huruf, angka, titik, garis bawah, tanda hubung, atau garis miring (maks. 64).', IMPORT_LEVEL.ERROR);
+          rowErrors++;
+        } else if (seenIds[storeId]) {
+          add(rowNum, storeId, 'store_id', 'store_id ganda (pertama di baris ' + seenIds[storeId] + ').', IMPORT_LEVEL.ERROR);
+          rowErrors++;
+        } else {
+          seenIds[storeId] = rowNum;
+        }
       }
-    }
 
-    var out = new Array(MERCHANT_COLUMNS.length);
-    for (var c = 0; c < MERCHANT_COLUMNS.length; c++) {
-      var col = MERCHANT_COLUMNS[c];
-      var raw = get(col);
-      if (MERCHANT_NUMBER_COLUMNS.indexOf(col) >= 0) {
-        var n = toNumber_(raw);
-        if (!isBlank_(raw) && n === null) add(rowNum, storeId, col, 'Bukan angka yang valid: "' + str_(raw).substring(0, 40) + '".', IMPORT_LEVEL.WARNING);
-        out[c] = n === null ? str_(raw) : n;
-      } else if (MERCHANT_DATE_COLUMNS.indexOf(col) >= 0) {
-        var d = toIsoDate_(raw, tz);
-        if (d === null) add(rowNum, storeId, col, 'Format tanggal tidak dikenali: "' + str_(raw).substring(0, 40) + '". Gunakan yyyy-mm-dd atau dd/mm/yyyy.', IMPORT_LEVEL.WARNING);
-        out[c] = d === null ? str_(raw) : d;
-      } else {
-        out[c] = str_(raw);
+      var out = collect ? new Array(MERCHANT_COLUMNS.length) : null;
+      for (var c = 0; c < MERCHANT_COLUMNS.length; c++) {
+        var col = MERCHANT_COLUMNS[c];
+        var raw = get(col);
+        var val;
+        if (MERCHANT_NUMBER_COLUMNS.indexOf(col) >= 0) {
+          var n = toNumber_(raw);
+          if (!isBlank_(raw) && n === null) add(rowNum, storeId, col, 'Bukan angka yang valid: "' + str_(raw).substring(0, 40) + '".', IMPORT_LEVEL.WARNING);
+          val = n === null ? str_(raw) : n;
+        } else if (MERCHANT_DATE_COLUMNS.indexOf(col) >= 0) {
+          var d = toIsoDate_(raw, tz);
+          if (d === null) add(rowNum, storeId, col, 'Format tanggal tidak dikenali: "' + str_(raw).substring(0, 40) + '". Gunakan yyyy-mm-dd atau dd/mm/yyyy.', IMPORT_LEVEL.WARNING);
+          val = d === null ? str_(raw) : d;
+        } else {
+          val = str_(raw);
+        }
+        if (out) out[c] = val;
       }
-    }
 
-    var gu = str_(get('grading_usak'));
-    if (!gu) {
-      result.summary.grading_usak_kosong++;
-      add(rowNum, storeId, 'grading_usak', 'grading_usak kosong: tidak dihitung sebagai USAK dan ditandai untuk pemeriksaan.', IMPORT_LEVEL.WARNING);
-    } else if (usakCfg.configured && !usakCfg.map[normKey_(gu)]) {
-      result.summary.grading_usak_tidak_dikenali++;
-      unknownValues[gu] = (unknownValues[gu] || 0) + 1;
-      add(rowNum, storeId, 'grading_usak', 'Nilai "' + gu + '" tidak ada di UsakConfig: ditandai untuk pemeriksaan.', IMPORT_LEVEL.WARNING);
-    }
+      var gu = str_(get(source));
+      if (!gu) {
+        result.summary.usak_kosong++;
+        add(rowNum, storeId, source, source + ' kosong: tidak dihitung sebagai USAK dan ditandai untuk pemeriksaan.', IMPORT_LEVEL.WARNING);
+      } else if (usakCfg.configured && !usakCfg.map[normKey_(gu)]) {
+        result.summary.usak_tidak_dikenali++;
+        unknownValues[gu] = (unknownValues[gu] || 0) + 1;
+        add(rowNum, storeId, source, 'Nilai "' + gu + '" tidak ada di UsakConfig: ditandai untuk pemeriksaan.', IMPORT_LEVEL.WARNING);
+      }
 
-    if (rowErrors) {
-      result.summary.baris_error++;
-      continue;
+      if (rowErrors) {
+        result.summary.baris_error++;
+        continue;
+      }
+      result.summary.baris_valid++;
+      var kode = normKode_(get('kode_cabang_final'), opts.pad);
+      result.summary.per_cabang[kode] = (result.summary.per_cabang[kode] || 0) + 1;
+      if (out) result.validRows.push(out);
     }
-    result.summary.baris_valid++;
-    var kode = normKode_(get('kode_cabang_final'), opts.pad);
-    result.summary.per_cabang[kode] = (result.summary.per_cabang[kode] || 0) + 1;
-    result.validRows.push(out);
-  }
-  for (var uv in unknownValues) result.summary.nilai_grading_usak_tidak_dikenali.push({ nilai: uv, jumlah: unknownValues[uv] });
+  };
+
+  result.finish = function () {
+    result.summary.nilai_usak_tidak_dikenali = [];
+    for (var uv in unknownValues) result.summary.nilai_usak_tidak_dikenali.push({ nilai: uv, jumlah: unknownValues[uv] });
+    return result;
+  };
   return result;
+}
+
+/**
+ * Validasi tabel utuh yang sudah ada di memori (CSV kecil, sheet staging).
+ * @param {Array} headers Header sumber.
+ * @param {Array<Array>} rows Baris data (tanpa header).
+ */
+function validateMerchantTable_(headers, rows, opts) {
+  var v = createMerchantValidator_(headers, opts);
+  if (v.fatal) return v;
+  v.addRows(rows, 2);
+  return v.finish();
 }
 
 /** Ringkasan teks hasil validasi (untuk dialog admin & skrip CLI). */
@@ -141,12 +176,15 @@ function importSummaryLines_(res, usakConfigured) {
   if (res.header.non_canonical.length) {
     lines.push('Header dipetakan ke nama resmi: ' + res.header.non_canonical.map(function (x) { return x.ditemukan + ' -> ' + x.seharusnya; }).join(', '));
   }
-  lines.push('grading_usak kosong: ' + s.grading_usak_kosong);
-  if (!usakConfigured) lines.push('UsakConfig belum dikonfigurasi: nilai grading_usak belum dapat diperiksa.');
-  else lines.push('grading_usak tidak dikenali: ' + s.grading_usak_tidak_dikenali +
-    (s.nilai_grading_usak_tidak_dikenali.length ? ' (' + s.nilai_grading_usak_tidak_dikenali.map(function (x) { return x.nilai + ': ' + x.jumlah; }).join(', ') + ')' : ''));
+  var src = res.usak_source || DEFAULT_USAK_SOURCE;
+  lines.push('Kolom sumber USAK: ' + src);
+  lines.push(src + ' kosong: ' + s.usak_kosong);
+  if (!usakConfigured) lines.push('UsakConfig belum dikonfigurasi: nilai ' + src + ' belum dapat diperiksa.');
+  else lines.push(src + ' tidak dikenali: ' + s.usak_tidak_dikenali +
+    (s.nilai_usak_tidak_dikenali.length ? ' (' + s.nilai_usak_tidak_dikenali.map(function (x) { return x.nilai + ': ' + x.jumlah; }).join(', ') + ')' : ''));
   var cab = Object.keys(s.per_cabang);
   lines.push('Jumlah cabang: ' + cab.length);
+  if (res.issues_dropped > 0) lines.push('Daftar masalah dipangkas: ' + res.issues_dropped + ' masalah tidak ditampilkan (hitungan di atas tetap lengkap).');
   return lines;
 }
 
@@ -170,6 +208,33 @@ function runImportValidation_() {
   });
   writeImportReport_(res, cfg.usak.configured, false);
   return { res: res, cfg: cfg };
+}
+
+/**
+ * Validasi sheet Merchants yang sudah terisi (tanpa sheet staging), per potongan baris.
+ * Cocok untuk data besar: tidak ada salinan data dan tidak ada baris yang dimuat sekaligus.
+ */
+function validateMerchantsSheetInPlace_() {
+  clearConfigMemo_();
+  var cfg = loadConfig_();
+  var sheet = getSheet_(SHEETS.MERCHANTS);
+  var lastRow = sheet.getLastRow(), lastCol = sheet.getLastColumn();
+  if (lastCol < 1) throw new AppError('HEADER_MISMATCH', 'Sheet "Merchants" belum memiliki header.', { sheet: SHEETS.MERCHANTS });
+  var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  var v = createMerchantValidator_(headers, {
+    usak: cfg.usak, tz: settingTz_(cfg), pad: cfg.settings.KODE_CABANG_PAD_LENGTH, collectRows: false, maxIssues: 5000,
+  });
+  if (!v.fatal) {
+    for (var start = 2; start <= lastRow; start += MERCHANT_SCAN_CHUNK_ROWS) {
+      var n = Math.min(MERCHANT_SCAN_CHUNK_ROWS, lastRow - start + 1);
+      v.addRows(sheet.getRange(start, 1, n, lastCol).getValues(), start);
+    }
+    v.finish();
+  }
+  writeImportReport_(v, cfg.usak.configured, false);
+  var lines = importSummaryLines_(v, cfg.usak.configured);
+  lines.push('Detail masalah ada di sheet ' + SHEETS.IMPORT_REPORT + '.');
+  return lines;
 }
 
 function writeImportReport_(res, usakConfigured, applied) {
@@ -205,6 +270,12 @@ function applyMerchantImport_() {
     ensureRowCapacity_(sheet, res.validRows.length + 1);
     applyTextFormats_(sheet, MERCHANT_COLUMNS, MERCHANT_TEXT_COLUMNS);
     var textIdx = MERCHANT_TEXT_COLUMNS.map(function (c) { return MERCHANT_COLUMNS.indexOf(c); });
+    // Urut per cabang agar data satu cabang berada dalam satu blok (pembacaan cepat).
+    var kIdx = MERCHANT_COLUMNS.indexOf('kode_cabang_final'), sIdx = MERCHANT_COLUMNS.indexOf('store_id');
+    res.validRows.sort(function (a, b) {
+      if (a[kIdx] !== b[kIdx]) return a[kIdx] < b[kIdx] ? -1 : 1;
+      return a[sIdx] < b[sIdx] ? -1 : (a[sIdx] > b[sIdx] ? 1 : 0);
+    });
     var CHUNK = 5000;
     for (var off = 0; off < res.validRows.length; off += CHUNK) {
       var chunk = res.validRows.slice(off, off + CHUNK).map(function (row) {

@@ -48,7 +48,8 @@ function dashboardSummary_(ctx) {
   var view = buildBranchView_(ctx, cfg);
   var items = view.items;
   var kat = { USAK: 0, BELUM_USAK: 0, KOSONG: 0, TIDAK_DIKENALI: 0 };
-  var byStatus = {}, byGrading = {}, byTiering = {}, byGradingUsak = {};
+  var byStatus = {}, byGrading = {}, byTiering = {}, byUsakSource = {};
+  var source = cfg.usak.source;
   var cross = {};
   var fu = { perlu_follow_up: 0, jatuh_tempo: 0, belum_pernah_belum_usak: 0, sudah_ada: 0 };
   var byFuStatus = {};
@@ -61,8 +62,8 @@ function dashboardSummary_(ctx) {
     tally_(byStatus, m.status_trx);
     var gKey = tally_(byGrading, m.grading_trx);
     var tKey = tally_(byTiering, m.Tiering);
-    var guKey = tally_(byGradingUsak, m.grading_usak);
-    byGradingUsak[guKey].kategori = it.kategori;
+    var guKey = tally_(byUsakSource, m[source]);
+    byUsakSource[guKey].kategori = it.kategori;
     if (!cross[gKey]) cross[gKey] = {};
     cross[gKey][tKey] = (cross[gKey][tKey] || 0) + 1;
 
@@ -116,8 +117,7 @@ function dashboardSummary_(ctx) {
     return {
       store_id: x.m.store_id,
       store_name: x.m.store_name,
-      grading_usak: x.m.grading_usak,
-      usak: usakInfo_(x.kategori, x.m),
+      usak: usakInfo_(x.kategori, x.m, source),
       priority: priorityInfo_(x),
       follow_up: x.fu,
     };
@@ -129,18 +129,27 @@ function dashboardSummary_(ctx) {
   usak.merchant_kosong = kat.KOSONG;
   usak.merchant_tidak_dikenali = kat.TIDAK_DIKENALI;
   usak.perlu_dicek = kat.KOSONG + kat.TIDAK_DIKENALI;
+  usak.source_column = source;
 
   var warnings = configWarnings_(cfg);
   if (usak.perlu_dicek > 0) {
     warnings.push({
       code: 'GRADING_USAK_NEEDS_REVIEW',
-      message: usak.perlu_dicek + ' merchant memiliki grading_usak kosong atau tidak dikenali dan tidak dihitung sebagai USAK.',
+      message: usak.perlu_dicek + ' merchant memiliki nilai ' + source + ' kosong atau tidak dikenali dan tidak dihitung sebagai USAK.',
     });
   }
-  if (view.missing_columns.length) {
+  // grading_usak yang tidak dipakai sebagai sumber USAK memang boleh tidak ada.
+  var missing = view.missing_columns.filter(function (c) { return c !== 'grading_usak' || source === 'grading_usak'; });
+  if (missing.length) {
     warnings.push({
       code: 'MISSING_COLUMNS',
-      message: 'Kolom berikut tidak ada di sheet Merchants dan ditampilkan kosong: ' + view.missing_columns.join(', ') + '.',
+      message: 'Kolom berikut tidak ada di sheet Merchants dan ditampilkan kosong: ' + missing.join(', ') + '.',
+    });
+  }
+  if (view.scan_mode === 'full') {
+    warnings.push({
+      code: 'DATA_NOT_SORTED',
+      message: 'Sheet Merchants belum terurut per cabang sehingga data dimuat lebih lambat. Minta admin menjalankan menu "Urutkan Merchants per cabang".',
     });
   }
   if (view.duplicates > 0) {
@@ -157,7 +166,7 @@ function dashboardSummary_(ctx) {
       status_trx: toSortedList_(byStatus, true),
       grading_trx: gradingList,
       Tiering: tieringList,
-      grading_usak: toSortedList_(byGradingUsak, true),
+      usak_source: toSortedList_(byUsakSource, true),
     },
     grading_trx_x_tiering: {
       rows: gradingList,

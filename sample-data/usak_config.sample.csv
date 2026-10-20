@@ -1,3 +1,6 @@
-nilai_grading_usak,kategori,keterangan
-USAK,USAK,CONTOH untuk data sintetis. Ganti dengan nilai resmi.
-NON USAK,BELUM_USAK,CONTOH untuk data sintetis. Ganti dengan nilai resmi.
+nilai_kolom_usak,kategori,keterangan
+USAK,USAK,Sama dengan bawaan setup (dikonfirmasi pemilik bisnis).
+USAK IDEAL,USAK,Sama dengan bawaan setup (dikonfirmasi pemilik bisnis).
+USAK OPTIMAL,USAK,Sama dengan bawaan setup (dikonfirmasi pemilik bisnis).
+UREG > 0,BELUM_USAK,Sama dengan bawaan setup (dikonfirmasi pemilik bisnis).
+UREG = 0,BELUM_USAK,Sama dengan bawaan setup (dikonfirmasi pemilik bisnis).

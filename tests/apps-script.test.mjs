@@ -5,6 +5,7 @@
 import { test, describe, before } from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
+import { createRuntime } from '../dev/gas-emulator/runtime.mjs';
 import { createSeededRuntime, DEV_FALLBACK_SECRET } from '../dev/gas-emulator/seed.mjs';
 import { hashPassword } from '../scripts/lib/password-hash.mjs';
 
@@ -322,8 +323,13 @@ describe('daftar merchant', () => {
     assert.ok(usak.items.every((m) => m.usak.kategori === 'USAK'));
     const tier = ctx.call('merchants.list', { filters: { Tiering: ['tier 1'] }, page_size: 100 }, ctx.token).data;
     assert.ok(tier.total > 0 && tier.items.every((m) => m.Tiering === 'Tier 1'));
-    const gu = ctx.call('merchants.list', { filters: { grading_usak: ['NON USAK'] } }, ctx.token).data;
-    assert.equal(gu.total, 58);
+    const expectedUreg = sheetRows(ctx.rt, 'Merchants')
+      .filter((m) => m.kode_cabang_final === '0101' && m.grading_trx === 'UREG > 0').length;
+    assert.ok(expectedUreg > 0);
+    const gt = ctx.call('merchants.list', { filters: { grading_trx: ['UREG > 0'] }, page_size: 100 }, ctx.token).data;
+    assert.equal(gt.total, expectedUreg);
+    // grading_usak bukan sumber USAK: filter ini diabaikan, bukan menyaring semua baris
+    assert.equal(ctx.call('merchants.list', { filters: { grading_usak: ['apa-saja'] } }, ctx.token).data.total, 101);
   });
 
   test('pencarian nama/pemilik/store_id', () => {
@@ -341,8 +347,15 @@ describe('daftar merchant', () => {
 
   test('opsi filter hanya dari cabang sendiri', () => {
     const r = ctx.call('merchants.filterOptions', {}, ctx.token).data;
-    const total = r.columns.grading_usak.reduce((s, x) => s + x.count, 0);
+    const total = r.columns.grading_trx.reduce((s, x) => s + x.count, 0);
     assert.equal(total, 101);
+    assert.equal(r.usak_source, 'grading_trx');
+    assert.ok(!('grading_usak' in r.columns));
+    // USAK, USAK IDEAL, dan USAK OPTIMAL semuanya berkategori USAK dan berjumlah 43
+    const usakOpts = r.columns.grading_trx.filter((o) => o.kategori === 'USAK');
+    assert.deepEqual(usakOpts.map((o) => o.value).sort(), ['USAK', 'USAK IDEAL', 'USAK OPTIMAL']);
+    assert.equal(usakOpts.reduce((n, o) => n + o.count, 0), 43);
+    assert.ok(r.columns.grading_trx.filter((o) => o.kategori === 'BELUM_USAK').every((o) => o.value.startsWith('UREG')));
     assert.ok(r.columns.nama_area_final.every((x) => x.value === 'Area Contoh Bandung Raya'));
   });
 });
@@ -414,7 +427,7 @@ describe('follow-up', () => {
     assert.equal(other.call('followups.update', { follow_up_id: fu.follow_up_id, catatan: 'x' }, t0101s).error.code, 'NOT_FOUND');
   });
 
-  test('status final mengeluarkan merchant dari "perlu follow-up"; status USAK tetap dari grading_usak', () => {
+  test('status final mengeluarkan merchant dari "perlu follow-up"; status USAK tetap dari kolom sumber USAK', () => {
     const before = ctx.call('dashboard.summary', {}, ctx.t).data;
     const target = ctx.call('merchants.list', { follow_up: 'perlu', page_size: 1 }, ctx.t).data.items[0];
     ctx.call('followups.create', { store_id: target.store_id, status_follow_up: 'SELESAI', progres_usak: 'MENUNGGU_PEMBARUAN_DATA' }, ctx.t);
@@ -449,12 +462,12 @@ describe('impor & header', () => {
     const token = login('0101', PW.petugas0101);
     const sheet = rt.spreadsheet.getSheetByName('Merchants');
     const header = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-    sheet.getRange(1, header.indexOf('grading_usak') + 1).setValue('grading_usak_lama');
+    sheet.getRange(1, header.indexOf('grading_trx') + 1).setValue('grading_trx_lama');
     rt.clearCache();
     rt.run('bumpVersion_', 'DATA_VERSION');
     const r = call('dashboard.summary', {}, token);
     assert.equal(r.error.code, 'HEADER_MISMATCH');
-    assert.deepEqual(r.error.details.kolom_hilang, ['grading_usak']);
+    assert.deepEqual(r.error.details.kolom_hilang, ['grading_trx']);
   });
 
   test('header beda huruf besar/kecil tetap terbaca tanpa diubah diam-diam', () => {
@@ -470,11 +483,210 @@ describe('impor & header', () => {
     assert.equal(sheet.getRange(1, header.indexOf('Tiering') + 1).getValue(), 'Tiering');
   });
 
-  test('fillGradingUsakValues_ tidak menebak kategori', () => {
+  test('fillUsakValues_ tidak menebak kategori', () => {
     const { rt } = setup({ withUsakConfig: false });
-    rt.run('fillGradingUsakValues_');
+    rt.run('fillUsakValues_');
     const rows = sheetRows(rt, 'UsakConfig');
-    assert.deepEqual(rows.map((r) => r.nilai_grading_usak).sort(), ['N/A', 'NON USAK', 'USAK']);
+    assert.deepEqual(rows.map((r) => r.nilai_kolom_usak).sort(), ['N/A', 'UREG = 0', 'UREG > 0', 'USAK', 'USAK IDEAL', 'USAK OPTIMAL']);
     assert.ok(rows.every((r) => r.kategori === ''));
+  });
+});
+
+describe('sheet Merchants besar & tak terurut', () => {
+  /** Acak urutan baris data Merchants secara deterministik (meniru data dari sistem sumber). */
+  function shuffleMerchants(rt) {
+    const sheet = rt.spreadsheet.getSheetByName('Merchants');
+    const rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, sheet.getLastColumn()).getValues();
+    let seed = 7;
+    const rnd = () => ((seed = (seed * 1664525 + 1013904223) % 4294967296) / 4294967296);
+    for (let i = rows.length - 1; i > 0; i--) {
+      const j = Math.floor(rnd() * (i + 1));
+      [rows[i], rows[j]] = [rows[j], rows[i]];
+    }
+    rows.forEach((line, r) => line.forEach((v, c) => sheet._setRaw(2 + r, c + 1, v)));
+    rt.run('bumpVersion_', 'DATA_VERSION');
+    rt.clearCache();
+  }
+
+  test('hasil sama untuk data tersebar, dengan peringatan hanya pada mode pindai penuh; urutkan memperbaikinya', () => {
+    const { rt, call, login } = setup();
+    const baseline = call('dashboard.summary', {}, login('0101', PW.petugas0101)).data;
+    assert.ok(!baseline.warnings.some((w) => w.code === 'DATA_NOT_SORTED'));
+
+    shuffleMerchants(rt);
+    rt.context.MERCHANT_SCAN_CHUNK_ROWS = 25; // paksa banyak potongan
+    const token = login('0101', PW.petugas0101);
+
+    // data tersebar, ambang kecil -> pindai penuh + peringatan, angka tetap benar
+    rt.context.MERCHANT_SCAN_MIN_ROWS = 10;
+    const scattered = call('dashboard.summary', {}, token).data;
+    assert.equal(scattered.usak.total_merchant, 101);
+    assert.equal(scattered.usak.merchant_usak, 43);
+    assert.equal(scattered.usak.gap_usak_50, 8);
+    assert.ok(scattered.warnings.some((w) => w.code === 'DATA_NOT_SORTED'));
+    const list = call('merchants.list', { page_size: 100 }, token).data;
+    assert.equal(list.total, 101);
+    assert.ok(list.items.every((m) => m.kode_cabang_final === '0101'));
+
+    // ambang besar -> mode segmen, tanpa peringatan, angka sama
+    rt.context.MERCHANT_SCAN_MIN_ROWS = 100000;
+    rt.run('bumpVersion_', 'DATA_VERSION');
+    const runs = call('dashboard.summary', {}, token).data;
+    assert.equal(runs.usak.merchant_usak, 43);
+    assert.ok(!runs.warnings.some((w) => w.code === 'DATA_NOT_SORTED'));
+
+    // menu urutkan -> satu blok per cabang
+    const lines = rt.run('sortMerchantsByBranch_');
+    assert.match(lines[1], /terurut per cabang/);
+    const layout = rt.run('merchantBranchLayout_');
+    assert.equal(layout.segments, layout.branches);
+    rt.context.MERCHANT_SCAN_MIN_ROWS = 10;
+    const sorted = call('dashboard.summary', {}, token).data;
+    assert.equal(sorted.usak.merchant_usak, 43);
+    assert.ok(!sorted.warnings.some((w) => w.code === 'DATA_NOT_SORTED'));
+  });
+
+  test('impor menulis baris terurut per cabang', () => {
+    const { rt } = setup();
+    const layout = rt.run('merchantBranchLayout_');
+    assert.equal(layout.branches, 3);
+    assert.equal(layout.sorted, true);
+  });
+
+  test('validasi langsung per potongan sama dengan validasi tabel utuh', () => {
+    const { rt } = setup();
+    const sheet = rt.spreadsheet.getSheetByName('Merchants');
+    const values = sheet.getRange(1, 1, sheet.getLastRow(), sheet.getLastColumn()).getValues();
+    const cfg = rt.run('loadConfig_');
+    const opts = { usak: cfg.usak, tz: 'Asia/Jakarta', pad: '' };
+    const whole = rt.context.validateMerchantTable_(values[0], values.slice(1), opts);
+
+    rt.context.MERCHANT_SCAN_CHUNK_ROWS = 37;
+    const lines = rt.run('validateMerchantsSheetInPlace_');
+    const text = lines.join('\n');
+    assert.match(text, new RegExp(`Total baris data: ${whole.summary.total_baris}\\b`));
+    assert.match(text, new RegExp(`Baris valid: ${whole.summary.baris_valid}\\b`));
+    assert.match(text, new RegExp(`Peringatan: ${whole.summary.peringatan}\\b`));
+    assert.match(text, /grading_trx kosong: 8/);
+    assert.match(text, /Kolom sumber USAK: grading_trx/);
+    assert.ok(whole.summary.peringatan > 0);
+  });
+
+  test('validasi langsung melaporkan kolom sumber USAK yang hilang', () => {
+    const { rt } = setup();
+    const sheet = rt.spreadsheet.getSheetByName('Merchants');
+    const header = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+    sheet.getRange(1, header.indexOf('grading_trx') + 1).setValue('');
+    const text = rt.run('validateMerchantsSheetInPlace_').join('\n');
+    assert.match(text, /Kolom wajib tidak ditemukan: grading_trx/);
+  });
+});
+
+describe('kolom sumber USAK', () => {
+  const settingRow = (rt, key) => {
+    const rows = sheetRows(rt, 'Settings');
+    return rows.findIndex((r) => r.kunci === key) + 2;
+  };
+
+  test('bawaan memakai grading_trx; kolom grading_usak tidak tampil di daftar dan detail', () => {
+    const { call, login } = setup();
+    const token = login('0101', PW.petugas0101);
+    const dash = call('dashboard.summary', {}, token).data;
+    assert.equal(dash.usak.source_column, 'grading_trx');
+    assert.equal(dash.distribusi.usak_source.filter((x) => x.kategori === 'USAK').reduce((n, x) => n + x.count, 0), 43);
+    assert.ok(dash.distribusi.usak_source.some((x) => x.value === 'USAK IDEAL' && x.kategori === 'USAK'));
+    assert.ok(!dash.warnings.some((w) => w.code === 'MISSING_COLUMNS' && /grading_usak/.test(w.message)));
+    const list = call('merchants.list', { page_size: 5 }, token).data;
+    assert.equal(list.usak_source, 'grading_trx');
+    assert.ok(list.items.every((m) => !('grading_usak' in m) && m.usak.source_column === 'grading_trx'));
+    const first = list.items[0];
+    assert.equal(first.usak.nilai, first.grading_trx);
+    const detail = call('merchants.detail', { store_id: first.store_id }, token).data;
+    assert.ok(!('grading_usak' in detail.merchant));
+    assert.equal(detail.usak.source_column, 'grading_trx');
+  });
+
+  test('grading_usak boleh tidak ada di header sheet bila bukan sumber USAK', () => {
+    const { rt, call, login } = setup();
+    const token = login('0101', PW.petugas0101);
+    const sheet = rt.spreadsheet.getSheetByName('Merchants');
+    const header = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+    const idx = header.indexOf('grading_usak');
+    for (let r = 1; r <= sheet.getLastRow(); r++) sheet._setRaw(r, idx + 1, '');
+    rt.run('bumpVersion_', 'DATA_VERSION');
+    const dash = call('dashboard.summary', {}, token);
+    assert.equal(dash.ok, true);
+    assert.equal(dash.data.usak.merchant_usak, 43);
+    assert.ok(!dash.data.warnings.some((w) => w.code === 'MISSING_COLUMNS'));
+  });
+
+  test('sumber dapat dialihkan ke grading_usak lewat Settings (satu kolom saja yang berlaku)', () => {
+    const { rt, call, login } = setup();
+    const merchants = rt.spreadsheet.getSheetByName('Merchants');
+    const header = merchants.getRange(1, 1, 1, merchants.getLastColumn()).getValues()[0];
+    const gtCol = header.indexOf('grading_trx') + 1, guCol = header.indexOf('grading_usak') + 1;
+    // grading_usak sengaja berbeda dari grading_trx agar terlihat kolom mana yang dipakai
+    for (let r = 2; r <= merchants.getLastRow(); r++) {
+      const v = merchants.getRange(r, gtCol).getValue();
+      merchants._setRaw(r, guCol, String(v).startsWith('USAK') ? 'LULUS' : v === '' ? '' : 'BELUM');
+    }
+    rt.spreadsheet.getSheetByName('Settings').getRange(settingRow(rt, 'USAK_SOURCE_COLUMN'), 2).setValue('grading_usak');
+    const cfgSheet = rt.spreadsheet.getSheetByName('UsakConfig');
+    cfgSheet.clear();
+    cfgSheet.getRange(1, 1, 3, 3).setValues([['nilai_kolom_usak', 'kategori', 'keterangan'], ['LULUS', 'USAK', ''], ['BELUM', 'BELUM_USAK', '']]);
+    rt.run('bumpVersion_', 'CONFIG_VERSION');
+    rt.run('bumpVersion_', 'DATA_VERSION');
+    rt.clearCache();
+
+    const token = login('0101', PW.petugas0101);
+    const dash = call('dashboard.summary', {}, token).data;
+    assert.equal(dash.usak.source_column, 'grading_usak');
+    assert.equal(dash.usak.total_merchant, 101);
+    assert.equal(dash.usak.merchant_usak, 43);
+    assert.equal(dash.usak.gap_usak_50, 8);
+    const list = call('merchants.list', { kategori_usak: ['USAK'], page_size: 100 }, token).data;
+    assert.equal(list.total, 43);
+    assert.ok(list.items.every((m) => m.grading_usak === 'LULUS' && m.usak.nilai === 'LULUS'));
+    const opts = call('merchants.filterOptions', {}, token).data;
+    assert.ok(opts.columns.grading_usak && opts.columns.grading_trx);
+    assert.equal(opts.usak_source, 'grading_usak');
+    const f = call('merchants.list', { filters: { grading_usak: ['lulus'] } }, token).data;
+    assert.equal(f.total, 43);
+  });
+
+  test('nilai Settings tidak valid -> memakai bawaan dan diberi peringatan', () => {
+    const { rt, call, login } = setup();
+    rt.spreadsheet.getSheetByName('Settings').getRange(settingRow(rt, 'USAK_SOURCE_COLUMN'), 2).setValue('status_trx');
+    rt.run('bumpVersion_', 'CONFIG_VERSION');
+    rt.clearCache();
+    const dash = call('dashboard.summary', {}, login('0101', PW.petugas0101)).data;
+    assert.equal(dash.usak.source_column, 'grading_trx');
+    assert.ok(dash.warnings.some((w) => w.code === 'USAK_SOURCE_INVALID'));
+  });
+});
+
+describe('definisi USAK bawaan setup', () => {
+  test('setup mengisi UsakConfig dengan definisi terkonfirmasi hanya bila kosong', () => {
+    const rt = createRuntime({ quiet: true, properties: { API_SHARED_SECRET: KEY } });
+    rt.run('setupSheets_');
+    const cfg = rt.run('loadUsakConfig_', { USAK_SOURCE_COLUMN: 'grading_trx' });
+    assert.equal(cfg.configured, true);
+    assert.equal(cfg.usak_values, 3);
+    assert.equal(cfg.belum_usak_values, 2);
+    const classify = (v) => rt.context.classifyUsak_(v, cfg);
+    assert.equal(classify('USAK'), 'USAK');
+    assert.equal(classify('usak ideal'), 'USAK');
+    assert.equal(classify('USAK OPTIMAL'), 'USAK');
+    assert.equal(classify('UREG > 0'), 'BELUM_USAK');
+    assert.equal(classify('UREG = 0'), 'BELUM_USAK');
+    assert.equal(classify('USAK PREMIUM'), 'TIDAK_DIKENALI'); // nilai baru tidak otomatis USAK
+    assert.equal(classify(''), 'KOSONG');
+
+    // setup ulang tidak menimpa perubahan admin
+    const sheet = rt.spreadsheet.getSheetByName('UsakConfig');
+    sheet.getRange(3, 2).setValue('BELUM_USAK'); // USAK IDEAL diubah admin
+    rt.run('setupSheets_');
+    assert.equal(sheet.getLastRow(), 6);
+    assert.equal(sheet.getRange(3, 2).getValue(), 'BELUM_USAK');
   });
 });

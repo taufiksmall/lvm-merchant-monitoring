@@ -2,35 +2,54 @@
 
 Semua konfigurasi bisnis ada di spreadsheet sehingga bisa diubah tanpa deploy ulang. Perubahan berlaku ≤ 2 menit, atau seketika setelah **LVM Admin › Bersihkan cache aplikasi**.
 
-## 1. Definisi USAK — sheet `UsakConfig` (WAJIB diisi)
+## 1. Definisi USAK — sheet `UsakConfig`
 
-Status USAK ditentukan **hanya** dari kolom `grading_usak` di sheet Merchants. Aplikasi tidak menyimpulkan status USAK dari `grading_trx`, catatan follow-up, atau kolom lain, dan tidak menebak nilai kategorinya.
+**Definisi yang berlaku (dikonfirmasi pemilik bisnis, 2026-10-20)** dan diisi otomatis oleh **LVM Admin › 1. Setup** bila sheet `UsakConfig` masih kosong:
 
-| nilai_grading_usak | kategori | keterangan |
+| nilai_kolom_usak (`grading_trx`) | kategori |
+|---|---|
+| USAK | USAK |
+| USAK IDEAL | USAK |
+| USAK OPTIMAL | USAK |
+| UREG > 0 | BELUM_USAK |
+| UREG = 0 | BELUM_USAK |
+
+Setup tidak menimpa isi `UsakConfig` yang sudah ada. Nilai lain yang muncul di data (mis. varian baru) **tidak otomatis dihitung USAK**: ditandai "tidak dikenali" sampai ditambahkan di sheet ini.
+
+Status USAK ditentukan **hanya** dari satu kolom acuan di sheet Merchants. Kolom acuan ditetapkan di sheet `Settings`, kunci `USAK_SOURCE_COLUMN`:
+
+| Nilai | Arti |
+|---|---|
+| `grading_trx` (**bawaan**) | Status USAK dibaca dari `grading_trx`. Sesuai data sumber saat ini, yang tidak memiliki kolom `grading_usak`. |
+| `grading_usak` | Dipakai bila nanti sumber data memuat kolom `grading_usak` yang menjadi acuan resmi. |
+
+Aplikasi tidak menyimpulkan status USAK dari kolom lain, catatan follow-up, atau nama nilai, dan tidak menebak kategorinya. Nilai selain dua pilihan di atas diabaikan dan dashboard menampilkan peringatan `USAK_SOURCE_INVALID`.
+
+Setiap nilai yang muncul di kolom acuan dipetakan ke kategori di sheet `UsakConfig`:
+
+| nilai_kolom_usak | kategori | keterangan |
 |---|---|---|
 | *(nilai persis seperti di data)* | `USAK` atau `BELUM_USAK` | bebas |
 
 Aturan:
 
-- Pencocokan tanpa beda huruf besar/kecil dan spasi di ujung.
+- Pencocokan tanpa beda huruf besar/kecil dan spasi di ujung. Nilai seperti `UREG > 0` dan `UREG = 0` dicocokkan apa adanya (persis, termasuk spasi di tengah).
 - `kategori` hanya `USAK` atau `BELUM_USAK` (`BELUM USAK`, `NON_USAK` juga diterima sebagai belum USAK).
 - Nilai yang **kosong** di data → kategori `KOSONG`; nilai yang **tidak ada di UsakConfig** → `TIDAK_DIKENALI`. Keduanya **tidak dihitung USAK**, ditandai "perlu dicek" di daftar/detail, dan memunculkan peringatan di dashboard.
 - Selama belum ada satu pun nilai berkategori `USAK`, dashboard menampilkan "Definisi USAK belum dikonfigurasi" dan menandai angka USAK, rasio, dan gap sebagai **belum final**.
 - Konfigurasi yang sama dipakai dashboard, rasio, gap target, filter, daftar, dan detail.
+- Bila kolom acuan adalah `grading_trx`, kolom itu tampil satu kali di daftar (nilai + label kategori USAK) dan kolom `grading_usak` disembunyikan.
 
 ### Langkah mengisi
 
-1. Pastikan data merchant sudah dimuat.
-2. **LVM Admin › Isi daftar nilai grading_usak ke UsakConfig** — menambahkan setiap nilai unik `grading_usak` yang ada di data dengan kolom kategori **kosong** dan jumlah merchant di keterangan.
+1. Pastikan data merchant sudah dimuat dan `USAK_SOURCE_COLUMN` benar (bawaan `grading_trx`).
+2. **LVM Admin › Isi daftar nilai kolom USAK ke UsakConfig** — menambahkan setiap nilai unik kolom acuan yang ada di data dengan kolom kategori **kosong** dan jumlah merchant di keterangan.
 3. Isi kolom `kategori` sesuai definisi bisnis resmi.
 4. **LVM Admin › Bersihkan cache aplikasi**.
 
-Contoh untuk data sintetis di `sample-data/usak_config.sample.csv` (**bukan nilai resmi**):
+Untuk memeriksa apakah ada nilai di luar lima nilai di atas, jalankan langkah 2 (menu hanya menambahkan nilai yang belum ada di UsakConfig, dengan kategori kosong dan jumlah merchant) atau **Validasi sheet Merchants (langsung)**, yang melaporkan jumlah dan contoh nilai `tidak dikenali`. Putuskan kategorinya secara eksplisit; sampai diisi, nilai tersebut dihitung `TIDAK_DIKENALI`, bukan USAK.
 
-| nilai_grading_usak | kategori | keterangan |
-|---|---|---|
-| USAK | USAK | CONTOH untuk data sintetis |
-| NON USAK | BELUM_USAK | CONTOH untuk data sintetis |
+`sample-data/usak_config.sample.csv` berisi pemetaan yang sama untuk emulator lokal.
 
 ### Rumus dashboard
 
@@ -71,14 +90,14 @@ Field turunan:
 | rule_id | aktif | label | kondisi | bobot |
 |---|---|---|---|---|
 | R01 | TRUE | Belum USAK | `_kategori_usak eq BELUM_USAK` | 3 |
-| R02 | TRUE | grading_usak perlu diperiksa | `_kategori_usak in KOSONG,TIDAK_DIKENALI` | 2 |
+| R02 | TRUE | Nilai USAK perlu diperiksa | `_kategori_usak in KOSONG,TIDAK_DIKENALI` | 2 |
 | R03 | TRUE | Jadwal follow-up jatuh tempo | `_follow_up_jatuh_tempo eq TRUE` | 2 |
 | R04 | TRUE | Belum pernah di-follow-up | `_kategori_usak neq USAK` **AND** `_ada_follow_up eq FALSE` | 1 |
 | R05 | **FALSE** | Tanpa transaksi 30 hari | `freq_30_days eq 0` | 1 |
 
 Asumsi yang dipakai:
 
-- Sasaran follow-up adalah merchant yang belum USAK atau nilai `grading_usak`-nya perlu dicek.
+- Sasaran follow-up adalah merchant yang belum USAK atau nilai kolom acuan USAK-nya perlu dicek.
 - Tidak ada ambang performa transaksi yang ditetapkan permanen. R05 hanya contoh dan nonaktif; aktifkan atau buat aturan baru (mis. `sv_mtd lt 1000000`) setelah ada definisi bisnis.
 - Merchant USAK hanya ditandai bila petugas sudah menjadwalkan follow-up yang jatuh tempo.
 
@@ -103,4 +122,4 @@ Aturan dengan kolom/operator tidak dikenal dilewati dan muncul sebagai peringata
 - `final = TRUE`: merchant dengan status terakhir ini tidak dihitung "perlu follow-up" dan jadwalnya tidak dianggap jatuh tempo.
 - `aktif = FALSE`: tidak bisa dipilih untuk catatan baru, tetapi catatan lama tetap tampil.
 - Jangan mengganti `kode` yang sudah dipakai di FollowUps; ubah `label` saja.
-- Progres USAK hanya catatan kerja. **Status USAK resmi tetap dari `grading_usak`.**
+- Progres USAK hanya catatan kerja. **Status USAK resmi tetap dari kolom acuan USAK (bawaan `grading_trx`).**

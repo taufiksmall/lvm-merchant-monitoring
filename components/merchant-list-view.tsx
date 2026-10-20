@@ -123,8 +123,8 @@ export function MerchantListView() {
             </Card>
           ) : (
             <>
-              <MerchantTable items={data.items} today={data.today} sort={data.sort} dir={data.dir} onSort={setSort} configured={data.usak_configured} />
-              <MerchantCards items={data.items} today={data.today} configured={data.usak_configured} />
+              <MerchantTable items={data.items} today={data.today} sort={data.sort} dir={data.dir} onSort={setSort} configured={data.usak_configured} source={data.usak_source} />
+              <MerchantCards items={data.items} today={data.today} configured={data.usak_configured} source={data.usak_source} />
               <Pagination data={data} update={update} />
             </>
           )}
@@ -244,8 +244,15 @@ function Filters({ q, setQ, searchHint, options, optionsError, searchParams, upd
               onChange={(v) => update({ status_follow_up: v })}
               options={[...(options?.status_follow_up ?? []), { value: "__KOSONG__", label: "Belum ada follow-up" }]}
             />
-            {FILTER_COLUMNS.map((col) => (
-              <Select key={col} id={`f-${col}`} label={COLUMN_LABELS[col]} value={get(col)} onChange={(v) => update({ [col]: v })} options={colOptions(col)} />
+            {FILTER_COLUMNS.filter((col) => !options || options.columns[col]).map((col) => (
+              <Select
+                key={col}
+                id={`f-${col}`}
+                label={col === options?.usak_source ? `${COLUMN_LABELS[col]} (acuan USAK)` : COLUMN_LABELS[col]}
+                value={get(col)}
+                onChange={(v) => update({ [col]: v })}
+                options={colOptions(col)}
+              />
             ))}
           </div>
           {(activeFilters > 0 || q) && (
@@ -288,7 +295,7 @@ function SortIcon({ active, dir }: { active: boolean; dir: "asc" | "desc" }) {
   return dir === "asc" ? <ArrowUp aria-hidden className="size-3" /> : <ArrowDown aria-hidden className="size-3" />;
 }
 
-function cell(m: MerchantListItem, key: string, today: string, configured: boolean) {
+function cell(m: MerchantListItem, key: string, today: string, configured: boolean, source: string) {
   switch (key) {
     case "merchant":
       return (
@@ -300,12 +307,17 @@ function cell(m: MerchantListItem, key: string, today: string, configured: boole
         </div>
       );
     case "grading_usak":
-      return (
-        <div className="flex flex-col items-start gap-1">
-          <span className="text-ink">{m.grading_usak || <span className="text-muted">(kosong)</span>}</span>
-          <UsakBadge usak={m.usak} configured={configured} />
-        </div>
-      );
+    case "grading_trx":
+      // Kolom sumber USAK menampilkan nilainya beserta kategori USAK; kolom lain tampil biasa.
+      if (key === source) {
+        return (
+          <div className="flex flex-col items-start gap-1">
+            <span className="text-ink">{m.usak.nilai || <span className="text-muted">(kosong)</span>}</span>
+            <UsakBadge usak={m.usak} configured={configured} />
+          </div>
+        );
+      }
+      return m[key] || <span className="text-muted">—</span>;
     case "freq_mtd":
     case "freq_30_days":
       return fmtNumber(m[key]);
@@ -331,20 +343,23 @@ function cell(m: MerchantListItem, key: string, today: string, configured: boole
   }
 }
 
-function MerchantTable({ items, today, sort, dir, onSort, configured }: {
+function MerchantTable({ items, today, sort, dir, onSort, configured, source }: {
   items: MerchantListItem[];
   today: string;
   sort: string;
   dir: "asc" | "desc";
   onSort: (field: string) => void;
   configured: boolean;
+  source: string;
 }) {
+  // grading_usak hanya tampil bila menjadi kolom sumber USAK.
+  const columns = COLUMNS.filter((c) => c.key !== "grading_usak" || source === "grading_usak");
   return (
     <div className="hidden overflow-x-auto rounded-xl border border-line bg-surface md:block">
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b border-line text-left text-xs text-ink-2">
-            {COLUMNS.map((c) => {
+            {columns.map((c) => {
               const active = c.sort === sort;
               return (
                 <th
@@ -367,7 +382,7 @@ function MerchantTable({ items, today, sort, dir, onSort, configured }: {
         <tbody>
           {items.map((m) => (
             <tr key={m.store_id} className="group border-b border-line last:border-0 hover:bg-surface-2">
-              {COLUMNS.map((c) => (
+              {columns.map((c) => (
                 <td
                   key={c.key}
                   className={cx(
@@ -377,7 +392,7 @@ function MerchantTable({ items, today, sort, dir, onSort, configured }: {
                     c.key === "merchant" && "group-hover:bg-surface-2 max-w-64",
                   )}
                 >
-                  {cell(m, c.key, today, configured)}
+                  {cell(m, c.key, today, configured, source)}
                 </td>
               ))}
             </tr>
@@ -388,7 +403,7 @@ function MerchantTable({ items, today, sort, dir, onSort, configured }: {
   );
 }
 
-function MerchantCards({ items, today, configured }: { items: MerchantListItem[]; today: string; configured: boolean }) {
+function MerchantCards({ items, today, configured, source }: { items: MerchantListItem[]; today: string; configured: boolean; source: string }) {
   return (
     <ul className="space-y-2 md:hidden">
       {items.map((m) => (
@@ -403,8 +418,8 @@ function MerchantCards({ items, today, configured }: { items: MerchantListItem[]
             </div>
             <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs text-ink-2">
               <UsakBadge usak={m.usak} configured={configured} />
-              <span>grading_usak: {m.grading_usak || "(kosong)"}</span>
-              <span>· {m.status_trx || "—"} · {m.grading_trx || "—"} · {m.Tiering || "—"}</span>
+              <span>{m.usak.source_column}: {m.usak.nilai || "(kosong)"}</span>
+              <span>· {m.status_trx || "—"}{source !== "grading_trx" && <> · {m.grading_trx || "—"}</>} · {m.Tiering || "—"}</span>
             </div>
             <dl className="mt-2 grid grid-cols-4 gap-2 text-xs">
               {[

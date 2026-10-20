@@ -92,13 +92,13 @@ function UsakCard({ data }: { data: MerchantDetail }) {
     <Card title="Status USAK & prioritas">
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
-          <p className="text-xs font-medium text-ink-2">grading_usak</p>
+          <p className="text-xs font-medium text-ink-2">{data.usak.source_column}</p>
           <p className="mt-1 flex flex-wrap items-center gap-2 text-sm text-ink">
-            <span className="font-semibold">{data.usak.grading_usak || "(kosong)"}</span>
+            <span className="font-semibold">{data.usak.nilai || "(kosong)"}</span>
             <UsakBadge usak={data.usak} configured={data.usak_configured} />
           </p>
           <p className="mt-2 text-xs text-ink-2">
-            Status USAK ditentukan hanya dari grading_usak sesuai konfigurasi resmi. Catatan follow-up tidak mengubah status ini.
+            Status USAK ditentukan hanya dari kolom {data.usak.source_column} sesuai konfigurasi resmi (UsakConfig). Catatan follow-up tidak mengubah status ini.
           </p>
           {data.usak.perlu_dicek && (
             <p className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-warn-ink">
@@ -138,11 +138,12 @@ function formatField(col: MerchantColumn, v: string | number | null | undefined)
 }
 
 function FieldList({ columns, data, storeId }: { columns: MerchantColumn[]; data: MerchantDetail; storeId: string }) {
-  const masked = columns.filter((c) => data.masked_fields.includes(c));
+  const present = columns.filter((c) => c in data.merchant);
+  const masked = present.filter((c) => data.masked_fields.includes(c));
   return (
     <>
       <dl className="space-y-2.5 text-sm">
-        {columns.filter((c) => !masked.includes(c)).map((col) => (
+        {present.filter((c) => !masked.includes(c)).map((col) => (
           <div key={col} className="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)] gap-3">
             <dt className="text-ink-2">
               {COLUMN_LABELS[col]}

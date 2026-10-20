@@ -27,7 +27,10 @@ export type UsakInfo = {
   kategori: UsakKategori;
   label: string;
   perlu_dicek: boolean;
-  grading_usak: string;
+  /** Nilai kolom sumber USAK (grading_trx atau grading_usak) untuk merchant ini. */
+  nilai: string;
+  /** Nama kolom sumber USAK sesuai Settings USAK_SOURCE_COLUMN. */
+  source_column: string;
 };
 
 export type FollowUpSummary = {
@@ -75,6 +78,7 @@ export type DashboardSummary = {
     merchant_kosong: number;
     merchant_tidak_dikenali: number;
     perlu_dicek: number;
+    source_column: string;
     rasio_usak: number;
     target_ratio_persen: number;
     target_usak_50: number;
@@ -85,7 +89,8 @@ export type DashboardSummary = {
     status_trx: CountItem[];
     grading_trx: CountItem[];
     Tiering: CountItem[];
-    grading_usak: CountItem[];
+    /** Distribusi nilai kolom sumber USAK, lengkap dengan kategori hasil UsakConfig. */
+    usak_source: CountItem[];
   };
   grading_trx_x_tiering: { rows: CountItem[]; cols: CountItem[]; cells: number[][] };
   follow_up: {
@@ -100,7 +105,6 @@ export type DashboardSummary = {
   prioritas_teratas: {
     store_id: string;
     store_name: string;
-    grading_usak: string;
     usak: UsakInfo;
     priority: PriorityInfo;
     follow_up: FollowUpSummary;
@@ -115,7 +119,8 @@ export type MerchantListItem = {
   owner_name: string;
   status_trx: string;
   grading_trx: string;
-  grading_usak: string;
+  /** Hanya ada bila grading_usak adalah kolom sumber USAK. */
+  grading_usak?: string;
   Tiering: string;
   freq_mtd: number | null;
   sv_mtd: number | null;
@@ -143,6 +148,7 @@ export type MerchantList = {
   dir: "asc" | "desc";
   search_fields: string[];
   usak_configured: boolean;
+  usak_source: string;
   today: string;
 };
 
@@ -155,6 +161,7 @@ export type FilterOptions = {
   status_follow_up: Option[];
   sort_fields: string[];
   usak_configured: boolean;
+  usak_source: string;
 };
 
 export type FollowUp = {

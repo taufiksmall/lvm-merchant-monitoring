@@ -25,6 +25,9 @@ export function createSeededRuntime(options = {}) {
     },
   });
   rt.run('setupSheets_');
+  // setupSheets_ mengisi UsakConfig bawaan; kosongkan agar skenario uji/emulator eksplisit.
+  const usakSheet = rt.spreadsheet.getSheetByName('UsakConfig');
+  if (usakSheet.getLastRow() > 1) usakSheet.getRange(2, 1, usakSheet.getLastRow() - 1, usakSheet.getLastColumn()).clearContent();
 
   const users = readCsv('users.sample.csv');
   rt.spreadsheet.getSheetByName('Users').getRange(2, 1, users.length - 1, users[0].length).setValues(users.slice(1));

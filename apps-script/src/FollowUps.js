@@ -3,7 +3,7 @@
  * Status follow-up terkini merchant = catatan dengan created_at terbaru.
  *
  * Akses: hanya follow-up dengan kode_cabang = cabang pengguna DAN merchant yang saat ini
- * dikelola cabang pengguna. Status USAK tetap dari grading_usak, bukan dari follow-up.
+ * dikelola cabang pengguna. Status USAK tetap dari kolom sumber USAK (UsakConfig), bukan dari follow-up.
  */
 
 function followUpCacheKey_(kode) {

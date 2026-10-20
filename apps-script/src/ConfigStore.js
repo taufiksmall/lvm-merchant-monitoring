@@ -17,10 +17,11 @@ function loadConfig_() {
   var cfg = {
     settings: loadSettings_(),
     roles: loadRoles_(),
-    usak: loadUsakConfig_(),
+    usak: null,
     rules: null,
     options: loadOptions_(),
   };
+  cfg.usak = loadUsakConfig_(cfg.settings);
   cfg.rules = loadPriorityRules_();
   cachePutJson_(key, cfg, APP.CONFIG_CACHE_SECONDS);
   configMemo_ = cfg;
@@ -71,15 +72,42 @@ function loadRoles_() {
 }
 
 /**
- * UsakConfig memetakan nilai grading_usak -> kategori USAK / BELUM_USAK.
+ * Kolom sumber status USAK dari Settings USAK_SOURCE_COLUMN. Nilai tidak valid jatuh ke
+ * bawaan dan ditandai agar admin memperbaikinya (tidak pernah diam-diam).
+ */
+function resolveUsakSource_(settings) {
+  var raw = String((settings && settings.USAK_SOURCE_COLUMN) || '').trim().toLowerCase();
+  if (!raw) return { source: DEFAULT_USAK_SOURCE, invalid: '' };
+  if (USAK_SOURCE_CHOICES.indexOf(raw) >= 0) return { source: raw, invalid: '' };
+  return { source: DEFAULT_USAK_SOURCE, invalid: raw };
+}
+
+/** Kolom Merchants yang wajib ada: kolom dasar + kolom sumber USAK. */
+function merchantRequiredColumns_(cfg) {
+  return MERCHANT_REQUIRED_COLUMNS.concat([cfg.usak.source]);
+}
+
+/** Kolom filter yang tersedia: grading_usak hanya bila itu sumber USAK. */
+function merchantFilterColumns_(cfg) {
+  return MERCHANT_FILTER_COLUMNS.filter(function (c) { return c !== 'grading_usak' || cfg.usak.source === 'grading_usak'; });
+}
+
+/** Kolom daftar merchant: grading_usak hanya bila itu sumber USAK. */
+function merchantListColumns_(cfg) {
+  return MERCHANT_LIST_COLUMNS.filter(function (c) { return c !== 'grading_usak' || cfg.usak.source === 'grading_usak'; });
+}
+
+/**
+ * UsakConfig memetakan nilai kolom sumber USAK -> kategori USAK / BELUM_USAK.
  * `configured` hanya true bila minimal satu nilai dipetakan sebagai USAK.
  */
-function loadUsakConfig_() {
-  var table = readTable_(SHEETS.USAK_CONFIG, { optional: true, required: ['nilai_grading_usak', 'kategori'] });
+function loadUsakConfig_(settings) {
+  var resolved = resolveUsakSource_(settings);
+  var table = readTable_(SHEETS.USAK_CONFIG, { optional: true, required: ['nilai_kolom_usak', 'kategori'] });
   var map = {}, invalid = [], unfilled = [], usakCount = 0, belumCount = 0;
   for (var i = 0; i < table.rows.length; i++) {
     var r = table.rows[i];
-    var raw = str_(r.nilai_grading_usak);
+    var raw = str_(r.nilai_kolom_usak);
     var kat = normalizeUsakKategori_(r.kategori);
     if (!raw) continue;
     if (!str_(r.kategori)) {
@@ -94,6 +122,8 @@ function loadUsakConfig_() {
     if (kat === USAK_KATEGORI.USAK) usakCount++; else belumCount++;
   }
   return {
+    source: resolved.source,
+    source_invalid: resolved.invalid,
     map: map,
     configured: usakCount > 0,
     usak_values: usakCount,
@@ -111,9 +141,9 @@ function normalizeUsakKategori_(v) {
   return '';
 }
 
-/** Klasifikasi grading_usak sebuah merchant. Satu-satunya sumber status USAK. */
-function classifyUsak_(gradingUsak, usakCfg) {
-  var raw = str_(gradingUsak);
+/** Klasifikasi nilai kolom sumber USAK sebuah merchant. Satu-satunya sumber status USAK. */
+function classifyUsak_(nilai, usakCfg) {
+  var raw = str_(nilai);
   if (!raw) return USAK_KATEGORI.KOSONG;
   var hit = usakCfg.map[normKey_(raw)];
   return hit ? hit.kategori : USAK_KATEGORI.TIDAK_DIKENALI;
@@ -212,7 +242,13 @@ function configWarnings_(cfg) {
   if (!cfg.usak.configured) {
     warnings.push({
       code: 'USAK_NOT_CONFIGURED',
-      message: 'Definisi USAK belum dikonfigurasi. Isi sheet UsakConfig dengan nilai grading_usak resmi. Angka USAK belum final.',
+      message: 'Definisi USAK belum dikonfigurasi. Isi sheet UsakConfig dengan nilai kolom ' + cfg.usak.source + ' yang berarti USAK. Angka USAK belum final.',
+    });
+  }
+  if (cfg.usak.source_invalid) {
+    warnings.push({
+      code: 'USAK_SOURCE_INVALID',
+      message: 'Settings USAK_SOURCE_COLUMN bernilai "' + cfg.usak.source_invalid + '" (tidak valid). Memakai ' + cfg.usak.source + '. Isi dengan grading_trx atau grading_usak.',
     });
   }
   if (cfg.usak.invalid_rows.length) {
@@ -224,7 +260,7 @@ function configWarnings_(cfg) {
   if (cfg.usak.unfilled_values.length) {
     warnings.push({
       code: 'USAK_CONFIG_UNFILLED',
-      message: cfg.usak.unfilled_values.length + ' nilai grading_usak di UsakConfig belum diberi kategori dan dianggap tidak dikenali.',
+      message: cfg.usak.unfilled_values.length + ' nilai di UsakConfig belum diberi kategori dan dianggap tidak dikenali.',
     });
   }
   if (cfg.rules.invalid.length) {

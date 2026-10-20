@@ -22,6 +22,16 @@ var APP = {
   MAX_NOTE_CHARS: 2000,
 };
 
+/**
+ * Pembacaan sheet Merchants besar (puluhan/ratusan ribu baris). Hanya baris cabang pengguna
+ * yang dimuat ke memori; sheet yang terurut per cabang dibaca sebagai satu blok.
+ */
+var MERCHANT_SCAN_CHUNK_ROWS = 8000;   // baris per getValues()
+var MERCHANT_SEGMENT_GAP = 100;        // celah baris yang masih digabung ke satu segmen
+var MERCHANT_MAX_SEGMENTS = 40;        // batas panggilan getRange; celah penggabungan diperlebar bila lebih
+var MERCHANT_SCAN_MIN_ROWS = 5000;     // baris sia-sia di bawah ini tidak dianggap masalah
+var MERCHANT_SCAN_FULL_RATIO = 0.3;    // baris sia-sia > 30% sheet => mode 'full' (peringatan data tak terurut)
+
 var SHEETS = {
   MERCHANTS: 'Merchants',
   USERS: 'Users',
@@ -48,8 +58,16 @@ var MERCHANT_COLUMNS = [
   'cifno', 'cbalrp', 'ybal', 'avgbalrp', 'amtcrc', 'amtdrc', 'Tiering',
 ];
 
-/** Kolom yang wajib ada agar aplikasi bisa berjalan. Kolom lain yang hilang hanya menjadi peringatan. */
-var MERCHANT_REQUIRED_COLUMNS = ['store_id', 'store_name', 'kode_cabang_final', 'nama_cabang_final', 'grading_usak'];
+/**
+ * Kolom yang wajib ada agar aplikasi bisa berjalan. Kolom sumber USAK (grading_trx atau
+ * grading_usak, lihat Settings USAK_SOURCE_COLUMN) ditambahkan secara dinamis lewat
+ * merchantRequiredColumns_(). Kolom lain yang hilang hanya menjadi peringatan.
+ */
+var MERCHANT_REQUIRED_COLUMNS = ['store_id', 'store_name', 'kode_cabang_final', 'nama_cabang_final'];
+
+/** Kolom yang boleh menjadi sumber status USAK. Hanya satu kolom aktif; ditetapkan di sheet Settings. */
+var USAK_SOURCE_CHOICES = ['grading_trx', 'grading_usak'];
+var DEFAULT_USAK_SOURCE = 'grading_trx';
 
 /** Kolom wajib terisi pada setiap baris saat impor. */
 var MERCHANT_REQUIRED_VALUES = ['store_id', 'store_name', 'kode_cabang_final', 'nama_cabang_final'];
@@ -78,7 +96,7 @@ var SENSITIVE_IDENTITY_COLUMNS = ['account_number', 'cifno'];
 /** Data saldo/keuangan nasabah: tidak dikirim kecuali role berhak dan meminta reveal. */
 var SENSITIVE_FINANCIAL_COLUMNS = ['cbalrp', 'ybal', 'avgbalrp', 'amtcrc', 'amtdrc'];
 
-/** Kolom yang dikirim pada daftar merchant (tanpa data sensitif). */
+/** Kolom yang dikirim pada daftar merchant (tanpa data sensitif). grading_usak hanya bila menjadi sumber USAK. */
 var MERCHANT_LIST_COLUMNS = [
   'store_id', 'store_name', 'owner_name', 'status_trx', 'grading_trx', 'grading_usak', 'Tiering',
   'freq_mtd', 'sv_mtd', 'fbi_mtd', 'freq_30_days', 'sv_30_days',
@@ -106,7 +124,7 @@ var MERCHANT_SORT_FIELDS = {
   last_follow_up: 'date',
 };
 
-/** Kategori hasil klasifikasi grading_usak. */
+/** Kategori hasil klasifikasi nilai kolom sumber USAK. */
 var USAK_KATEGORI = {
   USAK: 'USAK',
   BELUM_USAK: 'BELUM_USAK',
@@ -145,7 +163,7 @@ var SHEET_SCHEMAS = {
     'role', 'keterangan', 'boleh_lihat_sensitif', 'boleh_lihat_keuangan', 'boleh_cari_rekening',
     'boleh_tulis_follow_up', 'boleh_ubah_semua_follow_up',
   ],
-  UsakConfig: ['nilai_grading_usak', 'kategori', 'keterangan'],
+  UsakConfig: ['nilai_kolom_usak', 'kategori', 'keterangan'],
   PriorityRules: ['rule_id', 'aktif', 'label', 'kolom', 'operator', 'nilai', 'bobot', 'keterangan'],
   Options: ['jenis', 'kode', 'label', 'urutan', 'final', 'aktif'],
   Settings: ['kunci', 'nilai', 'keterangan'],
@@ -157,7 +175,7 @@ var SHEET_TEXT_COLUMNS = {
   Users: ['user_id', 'kode_cabang', 'password_hash'],
   FollowUps: SHEET_SCHEMAS.FollowUps,
   Sessions: SHEET_SCHEMAS.Sessions,
-  UsakConfig: ['nilai_grading_usak'],
+  UsakConfig: ['nilai_kolom_usak'],
   PriorityRules: ['rule_id', 'nilai'],
   Settings: ['kunci', 'nilai'],
   AuditLog: SHEET_SCHEMAS.AuditLog,
@@ -176,6 +194,7 @@ var DEFAULT_SETTINGS = {
   DEFAULT_PAGE_SIZE: { nilai: '25', keterangan: 'Jumlah baris per halaman bawaan pada daftar merchant.' },
   MAX_PAGE_SIZE: { nilai: '100', keterangan: 'Jumlah baris per halaman maksimum.' },
   KODE_CABANG_PAD_LENGTH: { nilai: '', keterangan: 'Opsional. Isi panjang kode cabang (mis. 4) agar kode angka dilengkapi nol di depan (101 -> 0101).' },
+  USAK_SOURCE_COLUMN: { nilai: 'grading_trx', keterangan: 'Satu-satunya kolom Merchants yang menentukan status USAK: grading_trx atau grading_usak. Nilainya dipetakan di sheet UsakConfig.' },
   PBKDF2_ITERATIONS: { nilai: '100000', keterangan: 'Iterasi hash kata sandi baru yang dibuat lewat menu admin.' },
   DATA_SNAPSHOT_DATE: { nilai: '', keterangan: 'Opsional. Tanggal posisi data merchant (yyyy-MM-dd) untuk ditampilkan di dashboard.' },
   TIMEZONE: { nilai: 'Asia/Jakarta', keterangan: 'Zona waktu untuk tanggal jatuh tempo follow-up.' },
@@ -189,6 +208,20 @@ var DEFAULT_ROLES = [
   ['petugas', 'Petugas cabang: melihat merchant cabang & mencatat follow-up.', 'FALSE', 'FALSE', 'FALSE', 'TRUE', 'FALSE'],
   ['supervisor', 'Supervisor cabang: dapat membuka data sensitif (tercatat di AuditLog) & mengubah semua follow-up cabang.', 'TRUE', 'TRUE', 'TRUE', 'TRUE', 'TRUE'],
   ['viewer', 'Hanya melihat, tidak dapat mencatat follow-up.', 'FALSE', 'FALSE', 'FALSE', 'FALSE', 'FALSE'],
+];
+
+/**
+ * Pemetaan nilai kolom sumber USAK (grading_trx) -> kategori. Definisi dikonfirmasi pemilik bisnis
+ * pada 2026-10-20 dan diisi ke sheet UsakConfig oleh setup HANYA bila sheet itu masih kosong.
+ * Nilai lain yang muncul di data tidak dihitung USAK dan ditandai "tidak dikenali" sampai
+ * admin menambahkannya di UsakConfig.
+ */
+var DEFAULT_USAK_CONFIG = [
+  ['USAK', 'USAK', 'Definisi dikonfirmasi pemilik bisnis 2026-10-20.'],
+  ['USAK IDEAL', 'USAK', 'Definisi dikonfirmasi pemilik bisnis 2026-10-20.'],
+  ['USAK OPTIMAL', 'USAK', 'Definisi dikonfirmasi pemilik bisnis 2026-10-20.'],
+  ['UREG > 0', 'BELUM_USAK', 'Definisi dikonfirmasi pemilik bisnis 2026-10-20.'],
+  ['UREG = 0', 'BELUM_USAK', 'Definisi dikonfirmasi pemilik bisnis 2026-10-20.'],
 ];
 
 /**
@@ -216,7 +249,7 @@ var DEFAULT_OPTIONS = [
  */
 var DEFAULT_PRIORITY_RULES = [
   ['R01', 'TRUE', 'Belum USAK', '_kategori_usak', 'eq', 'BELUM_USAK', '3', 'Asumsi awal: merchant belum USAK adalah sasaran follow-up.'],
-  ['R02', 'TRUE', 'grading_usak perlu diperiksa', '_kategori_usak', 'in', 'KOSONG,TIDAK_DIKENALI', '2', 'Nilai grading_usak kosong atau tidak ada di UsakConfig.'],
+  ['R02', 'TRUE', 'Nilai USAK perlu diperiksa', '_kategori_usak', 'in', 'KOSONG,TIDAK_DIKENALI', '2', 'Nilai kolom sumber USAK kosong atau tidak ada di UsakConfig.'],
   ['R03', 'TRUE', 'Jadwal follow-up jatuh tempo', '_follow_up_jatuh_tempo', 'eq', 'TRUE', '2', 'Tanggal follow-up berikutnya hari ini atau sudah lewat.'],
   ['R04', 'TRUE', 'Belum pernah di-follow-up', '_kategori_usak', 'neq', 'USAK', '1', 'Baris R04 digabung (AND) dengan baris R04 berikutnya.'],
   ['R04', 'TRUE', 'Belum pernah di-follow-up', '_ada_follow_up', 'eq', 'FALSE', '1', ''],

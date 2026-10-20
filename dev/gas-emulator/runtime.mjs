@@ -58,6 +58,28 @@ class MockRange {
     for (let c = 0; c < this.numCols; c++) this.sheet.formats.set(this.col + c, fmt);
     return this;
   }
+  /** Meniru Range.sort([{column, ascending}]): kolom bernomor sheet (mulai 1), sel kosong di akhir. */
+  sort(spec) {
+    const specs = (Array.isArray(spec) ? spec : [spec]).map((x) => (typeof x === 'number' ? { column: x, ascending: true } : x));
+    const rows = [];
+    for (let r = 0; r < this.numRows; r++) {
+      const line = [];
+      for (let c = 0; c < this.numCols; c++) line.push(this.sheet._read(this.row + r, this.col + c));
+      rows.push(line);
+    }
+    const blank = (v) => v === '' || v === null || v === undefined;
+    rows.sort((a, b) => {
+      for (const { column, ascending = true } of specs) {
+        const i = column - this.col;
+        const va = a[i], vb = b[i];
+        if (blank(va) !== blank(vb)) return blank(va) ? 1 : -1;
+        if (va !== vb) return (va < vb ? -1 : 1) * (ascending ? 1 : -1);
+      }
+      return 0;
+    });
+    rows.forEach((line, r) => line.forEach((v, c) => this.sheet._setRaw(this.row + r, this.col + c, v)));
+    return this;
+  }
   setFontWeight() { return this; }
   setBackground() { return this; }
   setWrap() { return this; }

@@ -74,13 +74,13 @@ export function DashboardView() {
               <CrossTab data={data} />
             </div>
             <div className="min-w-0 lg:col-span-2">
-              <Card title="Merchant berdasarkan grading_usak" subtitle="Kategori sesuai konfigurasi UsakConfig">
+              <Card title={`Merchant berdasarkan ${u.source_column}`} subtitle="Kolom acuan USAK; kategori sesuai konfigurasi UsakConfig">
                 <BarList
-                  items={data.distribusi.grading_usak}
+                  items={data.distribusi.usak_source}
                   total={u.total_merchant}
-                  hrefFor={(v) => listHref({ grading_usak: v })}
+                  hrefFor={(v) => listHref({ [u.source_column]: v })}
                   extra={(item) => item.kategori && (
-                    <UsakBadge configured={u.configured} usak={{ kategori: item.kategori, label: "", perlu_dicek: false, grading_usak: item.value }} />
+                    <UsakBadge configured={u.configured} usak={{ kategori: item.kategori, label: "", perlu_dicek: false, nilai: item.value, source_column: u.source_column }} />
                   )}
                 />
               </Card>

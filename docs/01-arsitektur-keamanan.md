@@ -58,7 +58,7 @@ Ketahui keterbatasan ini saat mengoperasikan aplikasi:
 6. **Kuota & performa:** satu request ±0,5–3 detik (lebih lama saat cold start); eksekusi maks. 6 menit; jumlah eksekusi bersamaan terbatas (sekitar 30 untuk Web App); CacheService maks. 100 KB per nilai dan 6 jam. Data merchant per cabang di-cache (`CACHE_TTL_SECONDS`, bawaan 10 menit) sehingga perubahan langsung di sheet Merchants terlihat setelah cache habis atau setelah menu **Bersihkan cache aplikasi**.
 7. **Log eksekusi** (`console.*`) terlihat oleh pemilik/editor skrip. Kode tidak pernah mencatat kata sandi, hash, token, atau payload.
 8. **Pembatasan login berbasis CacheService** bersifat upaya terbaik (cache bisa dikosongkan Google lebih awal).
-9. **Ukuran data:** Google Sheets maksimal 10 juta sel per spreadsheet (±238 ribu baris × 42 kolom). Untuk puluhan ribu merchant aplikasi tetap berjalan, tetapi cache miss akan lebih lambat. Bila data/jumlah pengguna tumbuh jauh di atas itu, pertimbangkan database terkelola — kode sudah memisahkan akses data di `Sheets.js`/`Merchants.js`.
+9. **Ukuran data:** Google Sheets maksimal 10 juta sel per spreadsheet (±238 ribu baris × 42 kolom) dan sheet staging impor menggandakan pemakaian sel. Untuk ±140 ribu merchant aplikasi berjalan jika sheet `Merchants` diurutkan per cabang (lihat [05-impor-data.md](05-impor-data.md#data-besar-puluhan-ribu-baris-ke-atas)); cache miss per cabang memakan ±2–3 detik. Bila data/jumlah pengguna tumbuh jauh di atas itu, pertimbangkan database terkelola — kode sudah memisahkan akses data di `Sheets.js`/`Merchants.js`.
 
 ## Rotasi API_SHARED_SECRET
 
