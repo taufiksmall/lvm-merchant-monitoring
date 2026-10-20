@@ -289,7 +289,6 @@ function FollowUpPanel({ data }: { data: DashboardSummary }) {
   const f = data.follow_up;
   const rows = [
     { label: "Perlu follow-up", value: f.perlu_follow_up, href: listHref({ follow_up: "perlu", sort: "priority" }), alert: false },
-    { label: "Jadwal jatuh tempo", value: f.jatuh_tempo, href: listHref({ follow_up: "jatuh_tempo", sort: "next_follow_up" }), alert: f.jatuh_tempo > 0 },
     {
       label: "Belum USAK & belum pernah di-follow-up",
       value: f.belum_pernah_belum_usak,
@@ -322,7 +321,7 @@ function FollowUpPanel({ data }: { data: DashboardSummary }) {
 }
 
 const METRIC_ROWS: { label: string; money: boolean; keys: (MetricKey | null)[] }[] = [
-  { label: "Frekuensi transaksi", money: false, keys: ["freq_mtd", "freq_ytd", "freq_30_days"] },
+  { label: "Transaksi", money: false, keys: ["freq_mtd", "freq_ytd", "freq_30_days"] },
   { label: "Nilai transaksi (SV)", money: true, keys: ["sv_mtd", "sv_ytd", "sv_30_days"] },
   { label: "FBI", money: true, keys: ["fbi_mtd", "fbi_ytd", null] },
 ];

@@ -77,7 +77,7 @@ export function MerchantDetailView({ storeId, branch }: { storeId: string; branc
             ))}
           </div>
           <PerformanceCard m={m} />
-          <FinancialCard data={data} storeId={storeId} />
+          <FinancialCard data={data} />
         </div>
         <div id="follow-up" className="min-w-0 scroll-mt-28 space-y-4 lg:sticky lg:top-18">
           <FollowUpPanel data={data} storeId={storeId} onSaved={reload} />
@@ -201,7 +201,7 @@ function SensitiveFields({ columns, data, storeId }: { columns: MerchantColumn[]
 
 function PerformanceCard({ m }: { m: MerchantDetail["merchant"] }) {
   const rows: { label: string; money: boolean; cols: (MerchantColumn | null)[] }[] = [
-    { label: "Frekuensi transaksi", money: false, cols: ["freq_mtd", "freq_ytd", "freq_30_days"] },
+    { label: "Transaksi", money: false, cols: ["freq_mtd", "freq_ytd", "freq_30_days"] },
     { label: "Nilai transaksi (SV)", money: true, cols: ["sv_mtd", "sv_ytd", "sv_30_days"] },
     { label: "FBI", money: true, cols: ["fbi_mtd", "fbi_ytd", null] },
   ];
@@ -235,47 +235,17 @@ function PerformanceCard({ m }: { m: MerchantDetail["merchant"] }) {
   );
 }
 
-function FinancialCard({ data, storeId }: { data: MerchantDetail; storeId: string }) {
-  const [values, setValues] = useState<Record<string, string | number | null> | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-
-  async function reveal() {
-    setBusy(true);
-    setErr(null);
-    try {
-      const res = await apiFetch<RevealResult>(`/api/merchants/${encodeURIComponent(storeId)}/reveal`, { method: "POST", json: { group: "financial" } });
-      setValues(res.values);
-    } catch (e) {
-      setErr(e instanceof ApiError ? e.message : "Gagal membuka data.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
+function FinancialCard({ data }: { data: MerchantDetail }) {
   return (
-    <Card title="Saldo & nominal lain" subtitle="Data keuangan nasabah — dibatasi sesuai role">
-      {values ? (
-        <>
-          <dl className="grid gap-3 text-sm sm:grid-cols-2">
-            {FINANCIAL_COLUMNS.map((col) => (
-              <div key={col}>
-                <dt className="font-mono text-xs text-ink-2">{col}</dt>
-                <dd className="mt-0.5 text-ink tabular">{fmtRupiah(values[col] as number | null)}</dd>
-              </div>
-            ))}
-          </dl>
-          <Button variant="ghost" size="sm" className="mt-3" onClick={() => setValues(null)}><EyeOff aria-hidden className="size-3.5" /> Sembunyikan</Button>
-        </>
-      ) : data.can_reveal_financial ? (
-        <div className="flex flex-wrap items-center gap-3">
-          <Button variant="secondary" size="sm" onClick={reveal} loading={busy}>{!busy && <Eye aria-hidden className="size-3.5" />} Tampilkan data saldo</Button>
-          <span className="text-xs text-ink-2">Kolom: {FINANCIAL_COLUMNS.join(", ")}. Akses tercatat di log audit.</span>
-        </div>
-      ) : (
-        <p className="flex items-center gap-2 text-sm text-ink-2"><Lock aria-hidden className="size-4" /> Data saldo tidak tersedia untuk role Anda.</p>
-      )}
-      {err && <p className="mt-2 text-xs text-critical-ink">{err}</p>}
+    <Card title="Saldo & nominal lain" subtitle="Data keuangan nasabah">
+      <dl className="grid gap-3 text-sm sm:grid-cols-2">
+        {FINANCIAL_COLUMNS.map((col) => (
+          <div key={col}>
+            <dt className="font-mono text-xs text-ink-2">{col}</dt>
+            <dd className="mt-0.5 text-ink">{fmtRupiah(data.financial[col] as number | null)}</dd>
+          </div>
+        ))}
+      </dl>
     </Card>
   );
 }

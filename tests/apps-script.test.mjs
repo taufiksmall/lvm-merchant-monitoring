@@ -269,7 +269,8 @@ describe('isolasi cabang & data sensitif', () => {
     assert.equal(r.ok, true);
     assert.match(r.data.merchant.account_number, /^•+\d{4}$/);
     assert.match(r.data.merchant.cifno, /^•+\d{4}$/);
-    assert.ok(!('cbalrp' in r.data.merchant));
+    assert.ok(!('cbalrp' in r.data.merchant)); // saldo dikirim terpisah di `financial`
+    assert.equal(typeof r.data.financial.cbalrp, 'number');
     assert.equal(r.data.can_reveal_identity, false);
   });
 

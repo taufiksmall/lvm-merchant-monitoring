@@ -187,9 +187,8 @@ export type FollowUp = {
 export type MerchantDetail = {
   merchant: Record<string, string | number | null>;
   masked_fields: string[];
-  restricted_fields: string[];
+  financial: Record<string, string | number | null>;
   can_reveal_identity: boolean;
-  can_reveal_financial: boolean;
   usak: UsakInfo;
   usak_configured: boolean;
   follow_up: FollowUpSummary;

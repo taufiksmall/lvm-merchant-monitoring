@@ -283,10 +283,10 @@ const COLUMNS: Col[] = [
   { key: "grading_trx", label: "Grading trx" },
   { key: "grading_usak", label: "Grading USAK", className: "min-w-40" },
   { key: "Tiering", label: "Tiering" },
-  { key: "freq_mtd", label: "Freq MTD", sort: "freq_mtd", align: "right" },
+  { key: "freq_mtd", label: "Trx MTD", sort: "freq_mtd", align: "right" },
   { key: "sv_mtd", label: "SV MTD", sort: "sv_mtd", align: "right" },
   { key: "fbi_mtd", label: "FBI MTD", sort: "fbi_mtd", align: "right" },
-  { key: "freq_30_days", label: "Freq 30 hr", sort: "freq_30_days", align: "right" },
+  { key: "freq_30_days", label: "Trx 30 hr", sort: "freq_30_days", align: "right" },
   { key: "sv_30_days", label: "SV 30 hr", sort: "sv_30_days", align: "right" },
   { key: "cabang", label: "Cabang", className: "min-w-36" },
   { key: "nama_area_final", label: "Area", className: "min-w-36" },
@@ -435,7 +435,7 @@ function MerchantCards({ items, today, configured, source, branch }: { items: Me
             </div>
             <dl className="mt-2 grid grid-cols-4 gap-2 text-xs">
               {[
-                ["Freq MTD", fmtNumber(m.freq_mtd)],
+                ["Trx MTD", fmtNumber(m.freq_mtd)],
                 ["SV MTD", fmtCompact(m.sv_mtd)],
                 ["FBI MTD", fmtCompact(m.fbi_mtd)],
                 ["SV 30 hr", fmtCompact(m.sv_30_days)],

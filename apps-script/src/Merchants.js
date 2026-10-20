@@ -566,6 +566,8 @@ function merchantDetail_(ctx, payload) {
   var view = buildBranchView_(ctx, cfg);
   var it = findBranchItem_(view, storeId);
   var merchant = {};
+  var financial = {};
+  SENSITIVE_FINANCIAL_COLUMNS.forEach(function (c) { financial[c] = it.m[c]; });
   for (var i = 0; i < MERCHANT_COLUMNS.length; i++) {
     var col = MERCHANT_COLUMNS[i];
     if (SENSITIVE_FINANCIAL_COLUMNS.indexOf(col) >= 0) continue;
@@ -576,9 +578,9 @@ function merchantDetail_(ctx, payload) {
   return {
     merchant: merchant,
     masked_fields: SENSITIVE_IDENTITY_COLUMNS,
-    restricted_fields: SENSITIVE_FINANCIAL_COLUMNS,
+    // Saldo/nominal ditampilkan langsung untuk semua akun yang berhak melihat merchant ini (cabang/area/region).
+    financial: financial,
     can_reveal_identity: ctx.permissions.view_sensitive,
-    can_reveal_financial: ctx.permissions.view_financial,
     usak: usakInfo_(it.kategori, it.m, cfg.usak.source),
     usak_configured: cfg.usak.configured,
     follow_up: it.fu,

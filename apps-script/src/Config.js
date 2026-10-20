@@ -148,7 +148,6 @@ var BLANK_FILTER_VALUE = '__KOSONG__';
 /** Pilihan filter kebutuhan follow-up pada daftar merchant. */
 var FOLLOW_UP_FILTERS = {
   perlu: 'Perlu follow-up',
-  jatuh_tempo: 'Jadwal jatuh tempo',
   belum_pernah: 'Belum pernah di-follow-up',
   sudah_ada: 'Sudah ada follow-up',
   tidak_perlu: 'Tidak perlu follow-up',
@@ -257,7 +256,8 @@ var DEFAULT_OPTIONS = [
   ['status_follow_up', 'MENUNGGU_RESPONS', 'Menunggu respons merchant', '4', 'FALSE', 'TRUE'],
   ['status_follow_up', 'TIDAK_DAPAT_DIHUBUNGI', 'Tidak dapat dihubungi', '5', 'FALSE', 'TRUE'],
   ['status_follow_up', 'TIDAK_BERMINAT', 'Tidak berminat', '6', 'TRUE', 'TRUE'],
-  ['status_follow_up', 'SELESAI', 'Selesai', '7', 'TRUE', 'TRUE'],
+  ['status_follow_up', 'PERLU_QRIS_AKRILIK', 'Perlu pemasangan QRIS Akrilik', '7', 'FALSE', 'TRUE'],
+  ['status_follow_up', 'SELESAI', 'Komit Optimalkan LVM', '8', 'TRUE', 'TRUE'],
   ['progres_usak', 'BELUM_DIMULAI', 'Belum dimulai', '1', '', 'TRUE'],
   ['progres_usak', 'EDUKASI', 'Edukasi / sosialisasi', '2', '', 'TRUE'],
   ['progres_usak', 'DALAM_PROSES', 'Dalam proses', '3', '', 'TRUE'],

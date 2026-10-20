@@ -54,6 +54,18 @@ export function RegionView() {
       : byKode(a, b));
   }, [data, minR, maxR, q, area, order]);
 
+  // Area diurutkan menurut kode cabang terendah di dalamnya (mis. Manado, Palu, Makassar, … Maluku).
+  const areas = useMemo(() => {
+    if (!data) return [];
+    const first = new Map<string, string>();
+    for (const b of data.cabang) {
+      const cur = first.get(b.nama_area);
+      if (cur === undefined || b.kode_cabang.localeCompare(cur, undefined, { numeric: true }) < 0) first.set(b.nama_area, b.kode_cabang);
+    }
+    const key = (name: string) => first.get(name) ?? "\uffff";
+    return [...data.area].sort((a, b) => key(a.nama_area).localeCompare(key(b.nama_area), undefined, { numeric: true }) || a.nama_area.localeCompare(b.nama_area));
+  }, [data]);
+
   if (!data && error) return <ErrorState message={error.message} onRetry={reload} />;
   if (!data) {
     return (
@@ -104,10 +116,10 @@ export function RegionView() {
 
       <MerchantSearch />
 
-      {data.area.length > 1 && (
+      {areas.length > 1 && (
         <Card title="Per area" subtitle="Rasio USAK gabungan · klik nama area untuk memfilter tabel cabang">
           <ul className="-my-1">
-            {data.area.map((a) => (
+            {areas.map((a) => (
               <li key={a.nama_area} className="grid grid-cols-[minmax(0,1fr)_4rem] items-center gap-x-3 gap-y-1 py-1.5 text-[13px] sm:grid-cols-[minmax(0,1fr)_minmax(6rem,14rem)_4rem]">
                 <button
                   type="button"
@@ -116,7 +128,7 @@ export function RegionView() {
                   className={cx("col-span-2 truncate text-left hover:underline sm:col-span-1", area === a.nama_area ? "font-semibold text-accent-ink" : "text-ink")}
                   title={`Filter tabel cabang: ${a.nama_area}`}
                 >
-                  {a.nama_area} <span className="text-xs text-muted">· {a.kode_area ? `${a.kode_area} · ` : ""}{fmtNumber(a.cabang)} cabang</span>
+                  {a.nama_area} <span className="text-xs text-muted">· {fmtNumber(a.cabang)} cabang</span>
                 </button>
                 <RatioBar value={a.rasio_usak} target={u.target_ratio_persen} />
                 <span className="text-right text-ink">{fmtPercent(a.rasio_usak, { ceiling: u.target_ratio_persen })}</span>
@@ -146,7 +158,7 @@ export function RegionView() {
                 <label htmlFor="filter-area" className={labelCls}>Area</label>
                 <select id="filter-area" value={area} onChange={(e) => setArea(e.target.value)} className={cx(fieldCls, area ? "border-accent" : "border-line-strong")}>
                   <option value="">Semua area ({fmtNumber(data.cakupan.areas.length)})</option>
-                  {data.area.map((a) => (
+                  {areas.map((a) => (
                     <option key={a.nama_area} value={a.nama_area}>{a.nama_area} ({fmtNumber(a.cabang)})</option>
                   ))}
                 </select>

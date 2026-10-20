@@ -33,8 +33,7 @@ export function FollowUpCell({ fu, today }: { fu: FollowUpSummary; today: string
     <div className="flex min-w-0 flex-col">
       <span className="truncate text-sm text-ink">{fu.status_label}</span>
       {fu.berikutnya ? (
-        <span className={fu.jatuh_tempo ? "text-xs font-medium text-critical-ink" : "text-xs text-ink-2"}>
-          {fu.jatuh_tempo && "Jatuh tempo · "}
+        <span className="text-xs text-ink-2">
           {fmtDate(fu.berikutnya)} · {relativeDays(fu.berikutnya, today)}
         </span>
       ) : (
