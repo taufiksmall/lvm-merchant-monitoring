@@ -2,6 +2,9 @@ import { NextResponse, type NextRequest } from "next/server";
 import { clearSessionCookie } from "@/lib/server/http";
 import { safeNextPath } from "@/lib/safe-next";
 
+// Apps Script bisa memakan puluhan detik pada pemuatan pertama cabang.
+export const maxDuration = 60;
+
 /** Hapus cookie sesi yang tidak berlaku lalu arahkan ke halaman login. */
 export async function GET(req: NextRequest) {
   const next = safeNextPath(req.nextUrl.searchParams.get("next"));

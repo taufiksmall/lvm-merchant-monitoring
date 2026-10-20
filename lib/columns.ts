@@ -40,7 +40,7 @@ export const COLUMN_LABELS: Record<MerchantColumn, string> = {
   fbi_ytd: "FBI YTD",
   freq_30_days: "Frekuensi 30 hari",
   sv_30_days: "SV 30 hari",
-  mid_static: "MID statis",
+  mid_static: "MID",
   mid_dynamic: "MID dinamis",
   flag_card_dongle: "Card dongle",
   status_trx: "Status transaksi",

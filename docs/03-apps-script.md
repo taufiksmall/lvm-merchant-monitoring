@@ -36,15 +36,28 @@ npm run gas:push
 
 Perintah ini mengunggah `apps-script/src/*.js`, `AdminDialog.html`, dan `appsscript.json` (file `._*` dari macOS diabaikan oleh `.claspignore`). Jawab **yes** bila clasp bertanya soal menimpa manifest.
 
-### Opsi B — salin manual
+### Opsi B — tempel manual (tanpa clasp)
 
-Di editor Apps Script, buat file dengan nama yang sama dan tempel isi setiap file di `apps-script/src/`: `Config`, `Util`, `Crypto`, `Sheets`, `ConfigStore`, `Auth`, `Merchants`, `FollowUps`, `Dashboard`, `Import`, `Admin`, `Main` (tipe Script), dan `AdminDialog` (tipe HTML). Aktifkan **Project Settings › Show "appsscript.json" manifest file in editor**, lalu ganti isinya dengan `apps-script/src/appsscript.json`.
+Buat file gabungan:
+
+```bash
+npm run gas:bundle
+```
+
+Hasilnya di `apps-script/dist/` (tidak di-commit): `Code.gs`, `AdminDialog.html`, `appsscript.json`. Di editor Apps Script (Ekstensi › Apps Script):
+
+1. File bawaan `Code.gs`: hapus isinya, tempel seluruh isi `dist/Code.gs`.
+2. **+ › HTML** → beri nama `AdminDialog` → tempel isi `dist/AdminDialog.html`.
+3. **Project Settings** (roda gigi) › centang **Show "appsscript.json" manifest file in editor** → buka `appsscript.json` → ganti isinya dengan `dist/appsscript.json`.
+4. **Simpan** (Ctrl/Cmd+S).
+
+Kode sumbernya terpisah per modul di `apps-script/src/` (Config, Util, Crypto, Sheets, ConfigStore, Auth, Merchants, FollowUps, Dashboard, Import, Admin, Main). Menempel file satu per satu juga bisa: buat file Script dengan nama yang sama dan tempel isinya (urutan tidak berpengaruh).
 
 ## 3. Jalankan setup
 
 1. Muat ulang spreadsheet → menu **LVM Admin** muncul.
 2. **LVM Admin › 1. Setup / perbarui struktur sheet**. Izinkan akses saat diminta (Google menampilkan layar otorisasi untuk akses Spreadsheet, UI, trigger, dan email Anda).
-3. Setup membuat sheet `Merchants, Users, FollowUps, Sessions, Roles, UsakConfig, PriorityRules, Options, Settings, AuditLog`, memformat kolom kode sebagai teks, mengisi baris bawaan konfigurasi, dan mengisi `SPREADSHEET_ID` otomatis.
+3. Setup membuat sheet `Merchants, Users, FollowUps, Sessions, Roles, UsakConfig, PriorityRules, Options, Settings, AuditLog, Import_Users`, memformat kolom kode sebagai teks, mengisi baris bawaan konfigurasi, dan mengisi `SPREADSHEET_ID` otomatis.
 
 ## 4. Script Properties
 
@@ -58,7 +71,9 @@ Di editor Apps Script, buat file dengan nama yang sama dan tempel isi setiap fil
 
 Properti sistem yang diisi otomatis (jangan diubah manual): `DATA_VERSION`, `CONFIG_VERSION`, `LAST_IMPORT_AT`.
 
-Jalankan **LVM Admin › 2. Periksa konfigurasi & header** untuk memastikan semuanya terisi.
+**Cara paling mudah mengisi `API_SHARED_SECRET`:** menu **LVM Admin › Atur API_SHARED_SECRET…**, tempel secret di kotak dialog, **OK**. Nilai divalidasi (minimal 32 karakter, ASCII tanpa spasi) dan tidak dicatat di log. Tidak perlu deploy ulang Apps Script.
+
+Jalankan **LVM Admin › 2. Periksa konfigurasi & header** untuk memastikan semuanya terisi (baris `API_SHARED_SECRET: terisi (N karakter)`).
 
 ## 5. Deploy sebagai Web App
 

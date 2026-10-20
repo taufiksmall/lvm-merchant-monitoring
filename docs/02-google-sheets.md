@@ -82,6 +82,47 @@ Kebijakan minimal: 10 karakter, memuat huruf dan angka.
 
 > Jangan pernah mengetik kata sandi asli ke sel spreadsheet — riwayat versi Google Sheets akan menyimpannya.
 
+### Akun untuk banyak cabang sekaligus
+
+Untuk puluhan/ratusan cabang, jangan membuat akun satu per satu. Alurnya (kata sandi tidak pernah masuk spreadsheet sebagai teks):
+
+1. **LVM Admin › 1. Setup** (sekali, bila belum membuat sheet `Import_Users`).
+2. **LVM Admin › Buat akun untuk semua cabang** — menambahkan baris `Users` untuk setiap `kode_cabang_final` di `Merchants` yang belum punya akun: `user_id = U<kode>`, `nama_cabang` dari data, `role = petugas`, `is_active = FALSE`, `password_hash` kosong. Idempoten; cabang yang sudah punya akun dilewati. Akun belum bisa login sampai hash diterapkan.
+3. Di sheet `Users`, **File › Unduh › CSV (sheet saat ini)**, simpan sebagai `users.csv`.
+4. Di komputer Anda:
+
+```bash
+npm run passwords:bulk -- users.csv
+```
+
+   Skrip membuat kata sandi awal acak (12 karakter, huruf+angka, tanpa karakter yang mudah tertukar) untuk setiap akun tanpa hash, menghitung hash PBKDF2-nya, dan menulis dua berkas di folder `akun-awal/` (ada di `.gitignore`):
+   - `hash-untuk-import.tsv` — `user_id`, `password_hash`, `is_active` dipisah **tab** (siap ditempel ke Google Sheets). `hash-untuk-import.csv` berisi hal yang sama dalam format CSV.
+   - `kata-sandi-awal.csv` — `kode_cabang,nama_cabang,user_id,kata_sandi` dalam **teks biasa**, izin 0600. Kata sandi tidak dicetak ke layar.
+
+   Bila kata sandi awal **ditentukan administrator**, siapkan CSV `kode_cabang,password` lalu tambahkan `--passwords=sandi-admin.csv`. Kata sandi yang tidak memenuhi kebijakan (min. 10 karakter, huruf+angka) ditolak. Opsi lain: `--only=15104,15105` (sebagian cabang), `--all` (reset juga akun yang sudah punya hash), `--length=14`.
+5. Salin seluruh isi `hash-untuk-import.tsv` (tanpa header; file ini tidak punya header), lalu klik sel **A2** sheet **`Import_Users`** dan tempel (⌘V). Hasil tempel harus mengisi tiga kolom. Jangan menempel isi `.csv`: Google Sheets tidak memisah kolom pada koma.
+6. **LVM Admin › Terapkan hash dari Import_Users** — memvalidasi format hash, mengisi `password_hash` dan `is_active` (hanya dua kolom itu) untuk `user_id` yang cocok, mencabut sesi lama pengguna tersebut, lalu mengosongkan `Import_Users`. `user_id` yang tidak ada, hash tidak valid, dan baris ganda dilaporkan dan dilewati.
+7. Distribusikan `kata-sandi-awal.csv` ke petugas lewat saluran aman, lalu **hapus berkas itu** (dan kosongkan Sampah). Minta petugas mengganti kata sandi bila Anda menyediakan mekanismenya; sampai saat itu, ganti lewat **Atur kata sandi pengguna…**.
+
+Untuk mengganti kata sandi massal nanti, ulangi langkah 3–6 dengan `--all` (atau `--only`).
+
+### Akun area dan region (pemantauan banyak cabang)
+
+Akun **area** dan **region** hanya **melihat** (tidak mencatat follow-up, tidak membuka rekening/CIF/saldo). Setelah login mereka membuka halaman **Pemantauan**: daftar cabang di cakupannya dengan total merchant, merchant USAK, rasio USAK, gap menuju 50% dan status, diurutkan dari **rasio terendah**; klik cabang untuk melihat daftar merchant yang perlu di-follow-up (urut prioritas Tiering), lengkap dengan detail dan riwayat follow-up cabang itu. Akun area melihat satu area; akun region melihat semua area yang dipetakan ke region tersebut.
+
+Cakupan ditentukan di server dari sheet `Wilayah` dan `BranchIndex`; cabang di luar cakupan ditolak.
+
+Langkah menyiapkan (setelah **Bangun indeks cabang**):
+
+1. **LVM Admin › Siapkan sheet Wilayah (area & region)** — mengisi sheet `Wilayah` dengan semua area di data (`nama_area_final`, `kode_area` bawaan `AREA-<NAMA>`, jumlah cabang & merchant) dan menambahkan role `area` dan `region` di sheet `Roles` bila belum ada. Aman diulang; isian Anda tidak ditimpa.
+2. Isi kolom **`nama_region`** dan **`kode_region`** (mis. `Region Sulawesi Utara`, `REG-SULUT`) untuk setiap area. Satu region = beberapa baris dengan `kode_region` yang sama. `kode_area` dan `kode_region` adalah **kode login** (huruf, angka, titik, garis bawah, tanda hubung; maks. 32).
+3. **LVM Admin › Buat akun area dan region** — membuat baris `Users` (`user_id` = kode login, `role` = `area`/`region`, nonaktif, tanpa kata sandi).
+4. Unduh sheet `Users` sebagai CSV dan buat hash kata sandi: `npm run passwords:bulk -- users.csv --pattern='Mdna{kode}#'` (atau kata sandi acak / `--passwords`). Terapkan hash seperti akun cabang. Login memakai kode wilayah di kolom **Kode cabang**.
+
+Angka pada halaman Pemantauan adalah **snapshot** saat **Bangun indeks cabang** dijalankan (total, USAK, belum USAK, perlu dicek per cabang). Jalankan ulang setelah data merchant atau definisi USAK berubah. Cabang yang barisnya terpecah (belum terurut) tidak muncul sampai **Urutkan Merchants per cabang** dijalankan.
+
+> Kata sandi berpola yang bisa diturunkan dari kode (mis. `MdnaAREA-PALU#`) lebih berisiko untuk akun area/region karena mencakup banyak cabang. Pertimbangkan `--length`/acak untuk akun-akun ini.
+
 ### Menonaktifkan akun
 
 Ubah `is_active` menjadi `FALSE`. Login baru langsung ditolak; sesi yang sedang berjalan berakhir paling lambat 5 menit. Untuk mengakhiri seketika: **LVM Admin › Cabut sesi satu pengguna…** → masukkan `user_id`.

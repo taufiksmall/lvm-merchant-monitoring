@@ -7,7 +7,8 @@
 export type ApiErrorBody = { code: string; message: string; details?: { fields?: Record<string, string> } & Record<string, unknown> };
 export type AppsScriptResult<T> = { ok: true; data: T } | { ok: false; error: ApiErrorBody };
 
-const TIMEOUT_MS = 30_000;
+// Pemuatan pertama sebuah cabang (cache kosong) bisa memakan puluhan detik di Apps Script.
+const TIMEOUT_MS = 55_000;
 
 function readConfig(): { url: string; key: string } | ApiErrorBody {
   const url = process.env.APPS_SCRIPT_URL;

@@ -25,7 +25,15 @@ npm-debug.log*
 *.tsbuildinfo
 next-env.d.ts
 
+# kata sandi awal massal (teks biasa; jangan pernah di-commit)
+akun-awal/
+
+# hasil gabungan Apps Script (dibuat ulang dengan npm run gas:bundle)
+apps-script/dist/
+
 # clasp (berisi scriptId & token lokal)
 .clasp.json
 apps-script/.clasp.json
 .clasprc.json
+akun-pola/
+akun-area-region/

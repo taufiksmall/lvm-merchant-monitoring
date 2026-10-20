@@ -5,3 +5,6 @@ tests
 sample-data
 docs
 ._*
+
+# Jangan unggah file lingkungan lokal ke Vercel (variabel diatur di Project Settings)
+.env*

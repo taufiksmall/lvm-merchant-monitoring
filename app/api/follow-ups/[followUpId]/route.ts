@@ -2,6 +2,9 @@ import type { NextRequest } from "next/server";
 import { forwardAction, jsonError, pickStrings, readJsonBody, rejectCrossSite } from "@/lib/server/http";
 import { safeDecode } from "@/lib/safe-next";
 
+// Apps Script bisa memakan puluhan detik pada pemuatan pertama cabang.
+export const maxDuration = 60;
+
 const FIELDS = ["status_follow_up", "catatan", "tanggal_follow_up_berikutnya", "progres_usak"];
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ followUpId: string }> }) {

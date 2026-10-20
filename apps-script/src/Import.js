@@ -292,6 +292,11 @@ function applyMerchantImport_() {
   writeImportReport_(res, run.cfg.usak.configured, true);
   var lines = importSummaryLines_(res, run.cfg.usak.configured);
   lines.unshift('Impor diterapkan: ' + res.validRows.length + ' merchant ditulis ke sheet Merchants.');
+  try {
+    lines = lines.concat(buildBranchIndex_());
+  } catch (e) {
+    lines.push('Indeks cabang belum dibangun (' + (e && e.message ? e.message : 'galat') + '). Jalankan menu "Bangun indeks cabang".');
+  }
   return lines;
 }
 

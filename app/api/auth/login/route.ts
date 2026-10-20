@@ -3,6 +3,9 @@ import { callAppsScript } from "@/lib/server/apps-script";
 import { jsonError, jsonOk, pickStrings, readJsonBody, rejectCrossSite, setSessionCookie } from "@/lib/server/http";
 import type { SessionUser } from "@/lib/types";
 
+// Apps Script bisa memakan puluhan detik pada pemuatan pertama cabang.
+export const maxDuration = 60;
+
 type LoginResult = { token: string; expires_at: string; user: SessionUser };
 
 export async function POST(req: NextRequest) {

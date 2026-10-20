@@ -11,12 +11,12 @@ import type { FollowUp, MerchantDetail, Option, RevealResult } from "@/lib/types
 import { FollowUpCell, PriorityBadge, UsakBadge } from "./badges";
 import { Alert, Badge, Button, Card, EmptyState, ErrorState, Skeleton, cx } from "./ui";
 
-export function MerchantDetailView({ storeId }: { storeId: string }) {
-  const { data, error, loading, reload } = useApi<MerchantDetail>(`/api/merchants/${encodeURIComponent(storeId)}`);
+export function MerchantDetailView({ storeId, branch }: { storeId: string; branch?: string }) {
+  const { data, error, loading, reload } = useApi<MerchantDetail>(`/api/merchants/${encodeURIComponent(storeId)}${branch ? `?kode_cabang=${encodeURIComponent(branch)}` : ""}`);
 
   const back = (
-    <Link href="/merchants" className="inline-flex items-center gap-1 text-sm text-ink-2 hover:text-ink">
-      <ArrowLeft aria-hidden className="size-4" /> Daftar merchant
+    <Link href={branch ? `/pemantauan/${encodeURIComponent(branch)}?follow_up=perlu&sort=priority` : "/merchants"} className="inline-flex items-center gap-1 text-sm text-ink-2 hover:text-ink">
+      <ArrowLeft aria-hidden className="size-4" /> {branch ? `Cabang ${branch}` : "Daftar merchant"}
     </Link>
   );
 
@@ -54,7 +54,7 @@ export function MerchantDetailView({ storeId }: { storeId: string }) {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <h1 className="text-xl font-semibold text-ink sm:text-2xl">{displayValue(m.store_name)}</h1>
-          <p className="mt-1 text-sm text-ink-2">{displayValue(m.store_id)} · {displayValue(m.owner_name)}</p>
+          <p className="mt-1 text-sm text-ink-2">MID {displayValue(m.mid_static || m.store_id)} · {displayValue(m.owner_name)}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <UsakBadge usak={data.usak} configured={data.usak_configured} />

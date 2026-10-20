@@ -18,14 +18,18 @@ function routes_() {
     'auth.login': { auth: false, fn: function (ctx, p) { return login_(p); } },
     'auth.logout': { fn: function (ctx) { return logout_(ctx); } },
     'auth.me': { fn: function (ctx) { return me_(ctx); } },
-    'dashboard.summary': { fn: function (ctx) { return dashboardSummary_(ctx); } },
-    'merchants.list': { fn: function (ctx, p) { return listMerchants_(ctx, p); } },
-    'merchants.filterOptions': { fn: function (ctx) { return filterOptions_(ctx); } },
-    'merchants.detail': { fn: function (ctx, p) { return merchantDetail_(ctx, p); } },
-    'merchants.revealSensitive': { fn: function (ctx, p) { return revealSensitive_(ctx, p); } },
-    'followups.list': { fn: function (ctx, p) { return listFollowUps_(ctx, p); } },
-    'followups.create': { fn: function (ctx, p) { return createFollowUp_(ctx, p); } },
-    'followups.update': { fn: function (ctx, p) { return updateFollowUp_(ctx, p); } },
+    // Pemantauan banyak cabang (akun area/region saja).
+    'region.summary': { fn: function (ctx) { return regionSummary_(ctx); } },
+    // Aksi per cabang. Untuk akun area/region, cabang yang diminta divalidasi terhadap cakupannya
+    // (effectiveCtx_); untuk akun cabang, parameter kode_cabang diabaikan.
+    'dashboard.summary': { fn: function (ctx, p) { return dashboardSummary_(effectiveCtx_(ctx, p)); } },
+    'merchants.list': { fn: function (ctx, p) { return listMerchants_(effectiveCtx_(ctx, p), p); } },
+    'merchants.filterOptions': { fn: function (ctx, p) { return filterOptions_(effectiveCtx_(ctx, p)); } },
+    'merchants.detail': { fn: function (ctx, p) { return merchantDetail_(effectiveCtx_(ctx, p), p); } },
+    'merchants.revealSensitive': { fn: function (ctx, p) { return revealSensitive_(effectiveCtx_(ctx, p), p); } },
+    'followups.list': { fn: function (ctx, p) { return listFollowUps_(effectiveCtx_(ctx, p), p); } },
+    'followups.create': { fn: function (ctx, p) { return createFollowUp_(effectiveCtx_(ctx, p), p); } },
+    'followups.update': { fn: function (ctx, p) { return updateFollowUp_(effectiveCtx_(ctx, p), p); } },
   };
 }
 

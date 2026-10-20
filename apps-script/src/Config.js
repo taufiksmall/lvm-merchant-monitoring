@@ -45,6 +45,9 @@ var SHEETS = {
   AUDIT_LOG: 'AuditLog',
   IMPORT_STAGING: 'Import_Merchants',
   IMPORT_REPORT: 'ImportReport',
+  IMPORT_USERS: 'Import_Users',
+  BRANCH_INDEX: 'BranchIndex',
+  WILAYAH: 'Wilayah',
 };
 
 /** Header sheet Merchants. Nama dan urutan dipertahankan persis seperti sumber data. */
@@ -98,7 +101,7 @@ var SENSITIVE_FINANCIAL_COLUMNS = ['cbalrp', 'ybal', 'avgbalrp', 'amtcrc', 'amtd
 
 /** Kolom yang dikirim pada daftar merchant (tanpa data sensitif). grading_usak hanya bila menjadi sumber USAK. */
 var MERCHANT_LIST_COLUMNS = [
-  'store_id', 'store_name', 'owner_name', 'status_trx', 'grading_trx', 'grading_usak', 'Tiering',
+  'store_id', 'mid_static', 'store_name', 'owner_name', 'status_trx', 'grading_trx', 'grading_usak', 'Tiering',
   'freq_mtd', 'sv_mtd', 'fbi_mtd', 'freq_30_days', 'sv_30_days',
   'kode_cabang_final', 'nama_cabang_final', 'nama_area_final', 'status_rekening', 'flag_card_dongle',
 ];
@@ -168,6 +171,16 @@ var SHEET_SCHEMAS = {
   Options: ['jenis', 'kode', 'label', 'urutan', 'final', 'aktif'],
   Settings: ['kunci', 'nilai', 'keterangan'],
   AuditLog: ['waktu', 'user_id', 'kode_cabang', 'aksi', 'store_id', 'keterangan'],
+  // Sheet kerja impor hash kata sandi massal (lihat applyUserHashImport_).
+  Import_Users: ['user_id', 'password_hash', 'is_active'],
+  // Posisi baris Merchants per cabang (dibangun admin) agar pemuatan cabang tidak memindai seluruh sheet.
+  // Lima kolom pertama = indeks baris; sisanya = ringkasan cabang (snapshot saat indeks dibangun) untuk pemantauan region/area.
+  BranchIndex: [
+    'kode_cabang', 'baris_awal', 'baris_akhir', 'jumlah', 'diperbarui',
+    'nama_cabang', 'nama_area', 'jumlah_usak', 'jumlah_belum_usak', 'jumlah_perlu_dicek',
+  ],
+  // Pemetaan area -> region; kode_area/kode_region dipakai sebagai kode login akun area/region.
+  Wilayah: ['nama_area_final', 'kode_area', 'nama_region', 'kode_region', 'jumlah_cabang', 'jumlah_merchant'],
 };
 
 /** Kolom yang diformat Plain Text pada sheet pendukung. */
@@ -179,6 +192,9 @@ var SHEET_TEXT_COLUMNS = {
   PriorityRules: ['rule_id', 'nilai'],
   Settings: ['kunci', 'nilai'],
   AuditLog: SHEET_SCHEMAS.AuditLog,
+  Import_Users: ['user_id', 'password_hash'],
+  BranchIndex: ['kode_cabang'],
+  Wilayah: ['nama_area_final', 'kode_area', 'nama_region', 'kode_region'],
 };
 
 /**
@@ -188,7 +204,7 @@ var SHEET_TEXT_COLUMNS = {
 var DEFAULT_SETTINGS = {
   SESSION_TTL_HOURS: { nilai: '8', keterangan: 'Masa berlaku sesi login (jam, 1-24).' },
   CACHE_TTL_SECONDS: { nilai: '600', keterangan: 'Lama cache data merchant per cabang (detik, 60-21600).' },
-  PRIORITY_MIN_SCORE: { nilai: '1', keterangan: 'Skor prioritas minimal agar merchant ditandai "perlu follow-up".' },
+  PRIORITY_MIN_SCORE: { nilai: '10', keterangan: 'Skor prioritas minimal agar merchant ditandai "perlu follow-up". 10 = hanya merchant Tier 2-5 (Tier 1 tidak perlu dikejar).' },
   LOGIN_MAX_ATTEMPTS: { nilai: '5', keterangan: 'Batas percobaan login gagal per kode cabang sebelum dikunci sementara.' },
   LOGIN_LOCK_MINUTES: { nilai: '15', keterangan: 'Lama penguncian login setelah batas percobaan tercapai (menit).' },
   DEFAULT_PAGE_SIZE: { nilai: '25', keterangan: 'Jumlah baris per halaman bawaan pada daftar merchant.' },
@@ -208,7 +224,12 @@ var DEFAULT_ROLES = [
   ['petugas', 'Petugas cabang: melihat merchant cabang & mencatat follow-up.', 'FALSE', 'FALSE', 'FALSE', 'TRUE', 'FALSE'],
   ['supervisor', 'Supervisor cabang: dapat membuka data sensitif (tercatat di AuditLog) & mengubah semua follow-up cabang.', 'TRUE', 'TRUE', 'TRUE', 'TRUE', 'TRUE'],
   ['viewer', 'Hanya melihat, tidak dapat mencatat follow-up.', 'FALSE', 'FALSE', 'FALSE', 'FALSE', 'FALSE'],
+  ['area', 'Akun area: memantau capaian rasio USAK semua cabang di areanya (hanya melihat).', 'FALSE', 'FALSE', 'FALSE', 'FALSE', 'FALSE'],
+  ['region', 'Akun region: memantau capaian rasio USAK semua cabang di regionnya (hanya melihat).', 'FALSE', 'FALSE', 'FALSE', 'FALSE', 'FALSE'],
 ];
+
+/** Role yang melihat banyak cabang (tampilan pemantauan), bukan satu cabang. */
+var SCOPE_ROLES = ['area', 'region'];
 
 /**
  * Pemetaan nilai kolom sumber USAK (grading_trx) -> kategori. Definisi dikonfirmasi pemilik bisnis
@@ -254,6 +275,12 @@ var DEFAULT_PRIORITY_RULES = [
   ['R04', 'TRUE', 'Belum pernah di-follow-up', '_kategori_usak', 'neq', 'USAK', '1', 'Baris R04 digabung (AND) dengan baris R04 berikutnya.'],
   ['R04', 'TRUE', 'Belum pernah di-follow-up', '_ada_follow_up', 'eq', 'FALSE', '1', ''],
   ['R05', 'FALSE', 'Tanpa transaksi 30 hari', 'freq_30_days', 'eq', '0', '1', 'CONTOH nonaktif. Aktifkan bila sesuai definisi bisnis.'],
+  // Prioritas utama berdasarkan kolom Tiering (definisi bisnis 2026-10-20). Bobot besar agar Tiering mendominasi
+  // urutan; aturan R01-R04 hanya menjadi pembeda dalam tier yang sama. Tier 1 tidak perlu dikejar.
+  ['R06', 'TRUE', 'Tier 2: ≥20 trx, SV <Rp100 rb (dikejar pertama)', 'Tiering', 'contains', 'Tier 2', '30', 'Paling dekat ke Tier 1.'],
+  ['R07', 'TRUE', 'Tier 3: SV ≥Rp100 rb, trx <20 (dikejar kedua)', 'Tiering', 'contains', 'Tier 3', '20', 'Paling dekat ke Tier 1 setelah Tier 2.'],
+  ['R08', 'TRUE', 'Tier 4: trx <20, SV <Rp100 rb (prioritas terendah)', 'Tiering', 'contains', 'Tier 4', '10', 'Prioritas terendah.'],
+  ['R09', 'TRUE', 'Tier 5: trx <20, SV <Rp100 rb (prioritas terendah)', 'Tiering', 'contains', 'Tier 5', '10', 'Prioritas terendah.'],
 ];
 
 /** Field turunan yang dapat dipakai di PriorityRules selain kolom Merchants. */

@@ -56,20 +56,89 @@ function planSegments_(matches, totalRows) {
   return segments;
 }
 
+/** Ubah satu baris sheet menjadi array nilai ternormalisasi (urutan MERCHANT_COLUMNS). */
+function convertMerchantRow_(row, info, tz, pad) {
+  var arr = new Array(MERCHANT_COLUMNS.length);
+  for (var c = 0; c < MERCHANT_COLUMNS.length; c++) {
+    var col = MERCHANT_COLUMNS[c];
+    var idx = info.index[col];
+    arr[c] = normalizeMerchantValue_(col, idx === undefined ? '' : row[idx], tz, pad);
+  }
+  return arr;
+}
+
+/** Peta kode cabang -> {start, end} (nomor baris sheet) dari sheet BranchIndex. Di-cache per DATA_VERSION. */
+function branchIndexMap_(cfg) {
+  var key = 'bi:' + getVersion_('DATA_VERSION');
+  var cached = cacheGetJson_(key);
+  if (cached) return cached;
+  var table = readTable_(SHEETS.BRANCH_INDEX, { optional: true, required: ['kode_cabang', 'baris_awal', 'baris_akhir'] });
+  var pad = cfg.settings.KODE_CABANG_PAD_LENGTH;
+  var map = {};
+  for (var i = 0; i < table.rows.length; i++) {
+    var r = table.rows[i];
+    var k = normKode_(r.kode_cabang, pad);
+    var start = toNumber_(r.baris_awal), end = toNumber_(r.baris_akhir);
+    if (k && start !== null && end !== null && start >= 2 && end >= start) map[k] = { start: start, end: end };
+  }
+  cachePutJson_(key, map, 600);
+  return map;
+}
+
 /**
- * Baca merchant satu cabang dari sheet. Kolom kode cabang dibaca dulu; setelah itu hanya
- * segmen baris cabang tersebut yang dibaca (dalam potongan MERCHANT_SCAN_CHUNK_ROWS).
- * scan_mode: 'block' (satu segmen, data terurut per cabang), 'runs' (beberapa segmen),
- * 'full' (data tersebar: banyak baris cabang lain ikut terbaca, lambat).
+ * Jalur cepat: baca hanya blok baris cabang (plus satu baris pembatas di atas dan di bawah) lalu
+ * validasi bahwa seluruh baris di dalam blok milik cabang dan baris pembatas bukan. Mengembalikan
+ * null bila indeks usang/salah sehingga pemanggil jatuh ke pemindaian.
  */
-function readBranchMerchantsFromSheet_(kode, cfg) {
+function readBranchFromIndex_(sheet, entry, ctx) {
+  var first = entry.start, last = entry.end;
+  if (last > ctx.lastRow) return null;
+  var from = Math.max(2, first - 1), to = Math.min(ctx.lastRow, last + 1);
+  var rows = [], seen = {}, duplicates = 0;
+  for (var off = from; off <= to; off += MERCHANT_SCAN_CHUNK_ROWS) {
+    var n = Math.min(MERCHANT_SCAN_CHUNK_ROWS, to - off + 1);
+    var t = Date.now();
+    var block = sheet.getRange(off, 1, n, ctx.lastCol).getValues();
+    ctx.clock('baca_ms', t);
+    t = Date.now();
+    for (var r = 0; r < block.length; r++) {
+      var rowNum = off + r;
+      var inside = rowNum >= first && rowNum <= last;
+      var row = block[r];
+      if (inside !== (normKode_(row[ctx.kcol], ctx.pad) === ctx.kode)) return null;
+      if (!inside) continue;
+      var storeId = str_(row[ctx.sidCol]);
+      if (!storeId) continue;
+      if (seen[storeId]) { duplicates++; continue; }
+      seen[storeId] = true;
+      rows.push(convertMerchantRow_(row, ctx.info, ctx.tz, ctx.pad));
+    }
+    ctx.clock('konversi_ms', t);
+  }
+  return { rows: rows, duplicates: duplicates };
+}
+
+/**
+ * Baca merchant satu cabang dari sheet.
+ * 1) Jalur indeks (scan_mode 'index'): sheet BranchIndex memberi posisi blok cabang; hanya blok itu dibaca.
+ * 2) Pemindaian: kolom kode cabang dibaca dulu, lalu hanya segmen baris cabang tersebut
+ *    (scan_mode 'block' = satu segmen, 'runs' = beberapa segmen, 'full' = data tersebar/lambat).
+ * opts: { timing: objek untuk mencatat ms per tahap, noIndex: true untuk melewati indeks }.
+ */
+function readBranchMerchantsFromSheet_(kode, cfg, opts) {
+  opts = opts || {};
+  var clock = function (name, t0) { if (opts.timing) opts.timing[name] = (opts.timing[name] || 0) + (Date.now() - t0); };
   return sheetOp_(function () {
+    var t = Date.now();
     var sheet = getSheet_(SHEETS.MERCHANTS);
     var lastRow = sheet.getLastRow(), lastCol = sheet.getLastColumn();
+    clock('dimensi_ms', t);
     if (lastCol < 1) {
       throw new AppError('HEADER_MISMATCH', 'Sheet "Merchants" belum memiliki header.', { sheet: SHEETS.MERCHANTS });
     }
+    t = Date.now();
     var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+    clock('header_ms', t);
     var info = buildHeaderIndex_(headers, MERCHANT_COLUMNS);
     assertHeaders_(SHEETS.MERCHANTS, info, merchantRequiredColumns_(cfg));
     var result = { rows: [], missing_columns: info.missing, duplicates: 0, loaded_at: isoNow_(), scan_mode: 'block' };
@@ -79,10 +148,32 @@ function readBranchMerchantsFromSheet_(kode, cfg) {
     var tz = settingTz_(cfg);
     var kcol = info.index.kode_cabang_final;
     var sidCol = info.index.store_id;
+    var ctx = { kode: kode, pad: pad, tz: tz, kcol: kcol, sidCol: sidCol, info: info, lastRow: lastRow, lastCol: lastCol, clock: clock };
+
+    if (!opts.noIndex) {
+      t = Date.now();
+      var entry = branchIndexMap_(cfg)[kode];
+      clock('indeks_ms', t);
+      if (entry) {
+        var fast = readBranchFromIndex_(sheet, entry, ctx);
+        if (fast) {
+          result.rows = fast.rows;
+          result.duplicates = fast.duplicates;
+          result.scan_mode = 'index';
+          return result;
+        }
+        result.index_stale = true; // indeks tidak cocok dengan isi sheet: pindai, dan beri tahu admin
+      }
+    }
+
+    t = Date.now();
     var kodes = sheet.getRange(2, kcol + 1, lastRow - 1, 1).getValues();
+    clock('kolom_kode_ms', t);
+    t = Date.now();
     var matches = branchMatchIndexes_(kodes, kode, pad);
     if (!matches.length) return result;
     var segments = planSegments_(matches, kodes.length);
+    clock('cocok_ms', t);
 
     // waste = baris bukan milik cabang yang ikut terbaca. Besar => data tersebar (lambat).
     var covered = 0;
@@ -95,7 +186,10 @@ function readBranchMerchantsFromSheet_(kode, cfg) {
     for (s = 0; s < segments.length; s++) {
       for (var off = segments[s].start; off <= segments[s].end; off += MERCHANT_SCAN_CHUNK_ROWS) {
         var n = Math.min(MERCHANT_SCAN_CHUNK_ROWS, segments[s].end - off + 1);
+        t = Date.now();
         var block = sheet.getRange(2 + off, 1, n, lastCol).getValues();
+        clock('baca_ms', t);
+        t = Date.now();
         for (var r = 0; r < block.length; r++) {
           var row = block[r];
           if (normKode_(row[kcol], pad) !== kode) continue;
@@ -103,14 +197,9 @@ function readBranchMerchantsFromSheet_(kode, cfg) {
           if (!storeId) continue;
           if (seen[storeId]) { result.duplicates++; continue; }
           seen[storeId] = true;
-          var arr = new Array(MERCHANT_COLUMNS.length);
-          for (var c = 0; c < MERCHANT_COLUMNS.length; c++) {
-            var col = MERCHANT_COLUMNS[c];
-            var idx = info.index[col];
-            arr[c] = normalizeMerchantValue_(col, idx === undefined ? '' : row[idx], tz, pad);
-          }
-          result.rows.push(arr);
+          result.rows.push(convertMerchantRow_(row, info, tz, pad));
         }
+        clock('konversi_ms', t);
       }
     }
     return result;
@@ -174,6 +263,7 @@ function buildBranchView_(ctx, cfg) {
     duplicates: data.duplicates,
     loaded_at: data.loaded_at,
     scan_mode: data.scan_mode || 'block',
+    index_stale: !!data.index_stale,
   };
 }
 
@@ -315,6 +405,7 @@ function matchesListFilters_(it, p, ctx) {
   if (p.q) {
     var hit = normKey_(m.store_name).indexOf(p.q) >= 0 ||
       normKey_(m.store_id).indexOf(p.q) >= 0 ||
+      normKey_(m.mid_static).indexOf(p.q) >= 0 ||
       normKey_(m.owner_name).indexOf(p.q) >= 0;
     if (!hit && ctx.permissions.search_account_number) {
       var digits = p.q.replace(/\D/g, '');
@@ -402,7 +493,7 @@ function listMerchants_(ctx, payload) {
   var totalPages = Math.max(1, Math.ceil(total / p.page_size));
   var page = Math.min(p.page, totalPages);
   var start = (page - 1) * p.page_size;
-  var searchFields = ['store_name', 'store_id', 'owner_name'];
+  var searchFields = ['store_name', 'mid_static', 'store_id', 'owner_name'];
   if (ctx.permissions.search_account_number) searchFields.push('account_number');
   return {
     items: filtered.slice(start, start + p.page_size).map(function (it) { return listItem_(it, cfg); }),

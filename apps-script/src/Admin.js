@@ -14,6 +14,9 @@ function onOpen() {
       .addItem('2. Periksa konfigurasi & header', 'checkSetup')
       .addItem('Rapikan nama header (eksplisit)', 'normalizeHeaders')
       .addSeparator()
+      .addItem('Atur API_SHARED_SECRET…', 'setApiSecretPrompt')
+      .addItem('Buat akun untuk semua cabang', 'createBranchAccounts')
+      .addItem('Terapkan hash dari Import_Users', 'applyUserHashImport')
       .addItem('Atur kata sandi pengguna…', 'showSetPasswordDialog')
       .addItem('Cabut sesi satu pengguna…', 'revokeUserSessionsPrompt')
       .addItem('Cabut semua sesi', 'revokeAllSessions')
@@ -21,8 +24,13 @@ function onOpen() {
       .addItem('Pasang pembersihan sesi harian', 'installCleanupTrigger')
       .addSeparator()
       .addItem('Isi daftar nilai kolom USAK ke UsakConfig', 'fillUsakValues')
+      .addItem('Terapkan aturan prioritas bawaan (Tiering)', 'applyDefaultPriorityRules')
       .addItem('Validasi sheet Merchants (langsung)', 'validateMerchantsSheet')
       .addItem('Urutkan Merchants per cabang', 'sortMerchantsByBranch')
+      .addItem('Bangun indeks cabang', 'buildBranchIndex')
+      .addItem('Siapkan sheet Wilayah (area & region)', 'prepareWilayahSheet')
+      .addItem('Buat akun area dan region', 'createRegionAreaAccounts')
+      .addItem('Ukur waktu muat cabang…', 'measureBranchLoad')
       .addItem('Validasi impor (Import_Merchants)', 'validateImport')
       .addItem('Terapkan impor ke Merchants', 'applyImport')
       .addItem('Bersihkan cache aplikasi', 'clearAppCache')
@@ -100,6 +108,9 @@ function setupSheets_() {
     { name: SHEETS.OPTIONS, headers: SHEET_SCHEMAS.Options, defaults: DEFAULT_OPTIONS },
     { name: SHEETS.SETTINGS, headers: SHEET_SCHEMAS.Settings, text: SHEET_TEXT_COLUMNS.Settings },
     { name: SHEETS.AUDIT_LOG, headers: SHEET_SCHEMAS.AuditLog, text: SHEET_TEXT_COLUMNS.AuditLog },
+    { name: SHEETS.IMPORT_USERS, headers: SHEET_SCHEMAS.Import_Users, text: SHEET_TEXT_COLUMNS.Import_Users },
+    { name: SHEETS.BRANCH_INDEX, headers: SHEET_SCHEMAS.BranchIndex, text: SHEET_TEXT_COLUMNS.BranchIndex },
+    { name: SHEETS.WILAYAH, headers: SHEET_SCHEMAS.Wilayah, text: SHEET_TEXT_COLUMNS.Wilayah },
   ];
   for (var i = 0; i < plan.length; i++) {
     var p = plan[i];
@@ -235,6 +246,11 @@ function checkSetup_() {
       (layout.sorted ? 'terurut per cabang (pemuatan cepat)'
         : 'TIDAK terurut per cabang (' + layout.segments + ' segmen) — jalankan "Urutkan Merchants per cabang"'));
   }
+  var idxRows = readTable_(SHEETS.BRANCH_INDEX, { optional: true, required: ['kode_cabang'] }).rows.length;
+  if (layout.rows) {
+    lines.push('BranchIndex: ' + idxRows + ' cabang diindeks' + (idxRows < layout.branches
+      ? ' (dari ' + layout.branches + ' cabang) — jalankan "Bangun indeks cabang"' : ' (pemuatan cabang cepat)'));
+  }
   lines.push('Kolom sumber USAK: ' + cfg.usak.source + (cfg.usak.source_invalid ? ' (Settings USAK_SOURCE_COLUMN "' + cfg.usak.source_invalid + '" tidak valid; memakai bawaan)' : ''));
   lines.push('UsakConfig: ' + cfg.usak.usak_values + ' nilai USAK, ' + cfg.usak.belum_usak_values + ' nilai BELUM_USAK' +
     (cfg.usak.unfilled_values.length ? ', ' + cfg.usak.unfilled_values.length + ' belum berkategori' : '') +
@@ -335,6 +351,187 @@ function passwordPolicyProblem_(password) {
   if (password.length > 200) return 'Kata sandi maksimal 200 karakter.';
   if (!/[A-Za-z]/.test(password) || !/\d/.test(password)) return 'Kata sandi harus memuat huruf dan angka.';
   return '';
+}
+
+/** Masalah pada secret API, atau '' bila valid. Secret tidak pernah dimasukkan ke pesan. */
+function apiSecretProblem_(value) {
+  if (value.length < 32) return 'Secret minimal 32 karakter (yang dimasukkan: ' + value.length + ').';
+  if (value.length > 200) return 'Secret maksimal 200 karakter.';
+  if (!/^[\x21-\x7E]+$/.test(value)) return 'Secret hanya boleh karakter ASCII tanpa spasi.';
+  return '';
+}
+
+/** Simpan secret ke Script Properties. Tidak mencatat nilainya ke log atau AuditLog. */
+function saveApiSecret_(value) {
+  var problem = apiSecretProblem_(value);
+  if (problem) throw new AppError('VALIDATION_ERROR', problem);
+  PropertiesService.getScriptProperties().setProperty('API_SHARED_SECRET', value);
+  audit_({ user_id: 'admin', kode_cabang: '' }, 'ADMIN_SET_API_SECRET', '', 'panjang ' + value.length);
+  return ['API_SHARED_SECRET tersimpan (' + value.length + ' karakter).',
+    'Nilainya harus sama persis dengan APPS_SCRIPT_API_KEY di Vercel. Tidak perlu deploy ulang Apps Script.'];
+}
+
+/** Dialog sederhana untuk menyimpan API_SHARED_SECRET tanpa membuka layar Script Properties. */
+function setApiSecretPrompt() {
+  var ui;
+  try {
+    assertAdmin_();
+    ui = SpreadsheetApp.getUi();
+  } catch (e) {
+    showAdminResult_('Atur API_SHARED_SECRET', ['GAGAL: ' + e.message]);
+    return;
+  }
+  var resp = ui.prompt('Atur API_SHARED_SECRET',
+    'Tempel secret (minimal 32 karakter). Harus sama dengan APPS_SCRIPT_API_KEY di Vercel. Nilai tidak disimpan di log.',
+    ui.ButtonSet.OK_CANCEL);
+  if (resp.getSelectedButton() !== ui.Button.OK) return;
+  var value = String(resp.getResponseText() || '').trim();
+  runAdmin_('Atur API_SHARED_SECRET', function () { return saveApiSecret_(value); });
+}
+
+/* ------------------------------------------------------------------ */
+/* Akun massal                                                         */
+/* ------------------------------------------------------------------ */
+
+var BRANCH_CODE_LOGIN_PATTERN = /^[A-Za-z0-9._\-]{1,32}$/;
+
+/**
+ * Buat baris Users untuk setiap kode_cabang_final di Merchants yang belum punya akun.
+ * Akun dibuat NONAKTIF dan tanpa kata sandi (is_active = FALSE, password_hash kosong) sampai
+ * hash diterapkan lewat applyUserHashImport_. Aman dijalankan berulang.
+ */
+function createBranchAccounts() {
+  return runAdmin_('Buat akun cabang', createBranchAccounts_);
+}
+
+function createBranchAccounts_() {
+  var cfg = loadConfig_();
+  var pad = cfg.settings.KODE_CABANG_PAD_LENGTH;
+  var sheet = getSheet_(SHEETS.MERCHANTS);
+  var info = readHeaderInfo_(sheet, MERCHANT_COLUMNS);
+  assertHeaders_(SHEETS.MERCHANTS, info, ['kode_cabang_final', 'nama_cabang_final']);
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) throw new AppError('VALIDATION_ERROR', 'Sheet Merchants belum berisi data.');
+  var kodes = sheet.getRange(2, info.index.kode_cabang_final + 1, lastRow - 1, 1).getValues();
+  var namas = sheet.getRange(2, info.index.nama_cabang_final + 1, lastRow - 1, 1).getValues();
+  var branches = {};
+  for (var i = 0; i < kodes.length; i++) {
+    var k = normKode_(kodes[i][0], pad);
+    if (!k) continue;
+    var b = branches[k] || (branches[k] = { count: 0, names: {} });
+    b.count++;
+    var n = str_(namas[i][0]);
+    if (n) b.names[n] = (b.names[n] || 0) + 1;
+  }
+
+  var usersSheet = getSheet_(SHEETS.USERS);
+  var existing = readTable_(SHEETS.USERS).rows;
+  var haveBranch = {}, usedIds = {};
+  for (i = 0; i < existing.length; i++) {
+    haveBranch[normKode_(existing[i].kode_cabang, pad)] = true;
+    usedIds[normKey_(existing[i].user_id)] = true;
+  }
+
+  var rows = [], skippedInvalid = [], alreadyHave = 0, multiName = 0;
+  var codes = Object.keys(branches).sort();
+  for (i = 0; i < codes.length; i++) {
+    var kode = codes[i];
+    if (haveBranch[kode]) { alreadyHave++; continue; }
+    if (!BRANCH_CODE_LOGIN_PATTERN.test(kode)) { skippedInvalid.push(kode); continue; }
+    var names = Object.keys(branches[kode].names).sort(function (a, c) {
+      return branches[kode].names[c] - branches[kode].names[a] || (a < c ? -1 : 1);
+    });
+    if (names.length > 1) multiName++;
+    var id = 'U' + kode, suffix = 2;
+    while (usedIds[normKey_(id)]) id = 'U' + kode + '-' + (suffix++);
+    usedIds[normKey_(id)] = true;
+    rows.push({ user_id: id, kode_cabang: kode, nama_cabang: names[0] || '', password_hash: '', role: 'petugas', is_active: false });
+  }
+
+  if (rows.length) {
+    ensureRowCapacity_(usersSheet, usersSheet.getLastRow() + rows.length + 1);
+    applyTextFormats_(usersSheet, null, SHEET_TEXT_COLUMNS.Users);
+    var canonical = SHEET_SCHEMAS.Users;
+    writeRowsByHeader_(usersSheet, canonical, rows.map(function (r) {
+      return canonical.map(function (col) { return cellValueFor_(SHEETS.USERS, col, r[col]); });
+    }));
+    audit_({ user_id: 'admin', kode_cabang: '' }, 'ADMIN_CREATE_BRANCH_ACCOUNTS', '', rows.length + ' akun');
+  }
+  var lines = [
+    rows.length + ' akun cabang dibuat (nonaktif, tanpa kata sandi).',
+    alreadyHave + ' cabang sudah punya akun dan dilewati.',
+    'Total cabang di data merchant: ' + codes.length + '.',
+  ];
+  if (skippedInvalid.length) {
+    lines.push(skippedInvalid.length + ' kode cabang dilewati karena tidak bisa dipakai untuk login (hanya huruf, angka, titik, garis bawah, tanda hubung): ' +
+      skippedInvalid.slice(0, 10).join(', ') + (skippedInvalid.length > 10 ? ', …' : ''));
+  }
+  if (multiName) lines.push(multiName + ' cabang memiliki lebih dari satu nama_cabang_final; nama yang paling sering dipakai yang diambil.');
+  if (rows.length) lines.push('Langkah berikut: unduh sheet Users sebagai CSV lalu jalankan npm run passwords:bulk di komputer Anda.');
+  return lines;
+}
+
+/**
+ * Terapkan hash kata sandi dari sheet Import_Users (user_id, password_hash, is_active) ke Users.
+ * Hanya kolom password_hash dan is_active yang diubah; hash divalidasi formatnya; sesi lama
+ * pengguna yang diubah dicabut; isi Import_Users dikosongkan setelah berhasil.
+ */
+function applyUserHashImport() {
+  return runAdmin_('Terapkan hash kata sandi', applyUserHashImport_);
+}
+
+function applyUserHashImport_() {
+  var imp = readTable_(SHEETS.IMPORT_USERS, { optional: true, required: ['user_id', 'password_hash'] });
+  if (!imp.sheet) throw new AppError('SHEET_MISSING', 'Sheet "Import_Users" tidak ditemukan. Jalankan menu Setup sheet.');
+  if (!imp.rows.length) throw new AppError('VALIDATION_ERROR', 'Sheet Import_Users kosong. Tempel isi hash-untuk-import.tsv (tanpa header) di sel A2.');
+
+  var usersSheet = getSheet_(SHEETS.USERS);
+  var info = readHeaderInfo_(usersSheet, SHEET_SCHEMAS.Users);
+  assertHeaders_(SHEETS.USERS, info, ['user_id', 'password_hash', 'is_active']);
+  var lastRow = usersSheet.getLastRow();
+  if (lastRow < 2) throw new AppError('VALIDATION_ERROR', 'Sheet Users belum berisi akun. Jalankan "Buat akun untuk semua cabang" dulu.');
+  var count = lastRow - 1;
+  var ids = usersSheet.getRange(2, info.index.user_id + 1, count, 1).getValues();
+  var hashes = usersSheet.getRange(2, info.index.password_hash + 1, count, 1).getValues();
+  var actives = usersSheet.getRange(2, info.index.is_active + 1, count, 1).getValues();
+  var rowOf = {};
+  for (var i = 0; i < ids.length; i++) rowOf[str_(ids[i][0])] = i;
+
+  var seen = {}, notFound = [], invalid = [], duplicates = 0, changedIds = [];
+  for (i = 0; i < imp.rows.length; i++) {
+    var r = imp.rows[i];
+    var id = str_(r.user_id);
+    if (!id) continue;
+    if (seen[id]) { duplicates++; continue; }
+    seen[id] = true;
+    var idx = rowOf[id];
+    if (idx === undefined) { notFound.push(id); continue; }
+    var hash = str_(r.password_hash);
+    if (!isValidPasswordHash_(hash)) { invalid.push(id); continue; }
+    hashes[idx][0] = hash;
+    actives[idx][0] = isBlank_(r.is_active) ? true : toBool_(r.is_active);
+    changedIds.push(id);
+  }
+
+  if (changedIds.length) {
+    withLock_(function () {
+      usersSheet.getRange(2, info.index.password_hash + 1, count, 1).setValues(hashes);
+      usersSheet.getRange(2, info.index.is_active + 1, count, 1).setValues(actives);
+    });
+    var revoked = revokeSessionsForUsers_(changedIds);
+    audit_({ user_id: 'admin', kode_cabang: '' }, 'ADMIN_IMPORT_PASSWORD_HASH', '', changedIds.length + ' akun');
+    // Kosongkan Import_Users (hash tidak perlu tersimpan di sana).
+    if (imp.sheet.getLastRow() > 1) imp.sheet.getRange(2, 1, imp.sheet.getLastRow() - 1, Math.max(imp.sheet.getLastColumn(), 1)).clearContent();
+    var lines = [changedIds.length + ' akun diperbarui dan diaktifkan sesuai kolom is_active (' + revoked + ' sesi lama dicabut).'];
+  } else {
+    lines = ['Tidak ada akun yang diperbarui.'];
+  }
+  var preview = function (list) { return list.slice(0, 10).join(', ') + (list.length > 10 ? ', …' : ''); };
+  if (notFound.length) lines.push(notFound.length + ' user_id tidak ada di Users (dilewati): ' + preview(notFound));
+  if (invalid.length) lines.push(invalid.length + ' hash tidak valid formatnya (dilewati): ' + preview(invalid));
+  if (duplicates) lines.push(duplicates + ' baris ganda di Import_Users dilewati.');
+  if (changedIds.length) lines.push('Isi Import_Users dikosongkan.');
+  return lines;
 }
 
 function revokeUserSessionsPrompt() {
@@ -443,6 +640,39 @@ function fillUsakValues_() {
   return lines;
 }
 
+/** Ganti isi PriorityRules dengan aturan bawaan (prioritas Tiering) dan atur PRIORITY_MIN_SCORE. */
+function applyDefaultPriorityRules() {
+  var ui = null;
+  try { ui = SpreadsheetApp.getUi(); } catch (e) { ui = null; }
+  if (ui) {
+    var resp = ui.alert('Terapkan aturan prioritas bawaan',
+      'Isi sheet PriorityRules akan diganti dengan aturan bawaan (prioritas Tiering) dan Settings PRIORITY_MIN_SCORE diatur ke ' +
+      DEFAULT_SETTINGS.PRIORITY_MIN_SCORE.nilai + '. Perubahan manual Anda di PriorityRules akan hilang. Lanjutkan?', ui.ButtonSet.YES_NO);
+    if (resp !== ui.Button.YES) return;
+  }
+  return runAdmin_('Aturan prioritas bawaan', applyDefaultPriorityRules_);
+}
+
+function applyDefaultPriorityRules_() {
+  var sheet = getSheet_(SHEETS.PRIORITY_RULES);
+  ensureHeaders_(sheet, SHEET_SCHEMAS.PriorityRules);
+  var last = sheet.getLastRow();
+  if (last > 1) sheet.getRange(2, 1, last - 1, Math.max(sheet.getLastColumn(), 1)).clearContent();
+  writeRowsByHeader_(sheet, SHEET_SCHEMAS.PriorityRules, DEFAULT_PRIORITY_RULES);
+  var min = DEFAULT_SETTINGS.PRIORITY_MIN_SCORE;
+  var table = readTable_(SHEETS.SETTINGS, { required: ['kunci', 'nilai'] });
+  var row = null;
+  for (var i = 0; i < table.rows.length; i++) if (str_(table.rows[i].kunci).toUpperCase() === 'PRIORITY_MIN_SCORE') row = table.rows[i];
+  if (row) updateObjectFields_(SHEETS.SETTINGS, row._row, { nilai: min.nilai });
+  else writeRowsByHeader_(getSheet_(SHEETS.SETTINGS), SHEET_SCHEMAS.Settings, [['PRIORITY_MIN_SCORE', min.nilai, min.keterangan]]);
+  bumpVersion_('CONFIG_VERSION');
+  clearConfigMemo_();
+  var cfg = loadConfig_();
+  return [DEFAULT_PRIORITY_RULES.length + ' aturan prioritas diterapkan (' + cfg.rules.list.length + ' aktif).',
+    'PRIORITY_MIN_SCORE = ' + min.nilai + ': merchant Tier 2, 3, 4, dan 5 ditandai perlu follow-up; Tier 1 tidak.',
+    'Urutan: Tier 2 (bobot 30) > Tier 3 (20) > Tier 4 dan 5 (10).'];
+}
+
 function validateMerchantsSheet() {
   return runAdmin_('Validasi sheet Merchants', validateMerchantsSheetInPlace_);
 }
@@ -469,11 +699,268 @@ function sortMerchantsByBranch_() {
   });
   bumpVersion_('DATA_VERSION');
   var layout = merchantBranchLayout_();
-  return [
+  var lines = [
     (lastRow - 1) + ' baris diurutkan menurut kode_cabang_final lalu store_id.',
     'Cabang: ' + layout.branches + ', segmen: ' + layout.segments + (layout.sorted ? ' (terurut per cabang).' : ' (MASIH tidak terurut; periksa sel kode_cabang_final).'),
     'Catatan: rumus atau referensi lain yang bergantung pada nomor baris perlu diperiksa.',
   ];
+  return lines.concat(buildBranchIndex_());
+}
+
+/**
+ * Bangun sheet BranchIndex: untuk setiap cabang yang barisnya satu blok kontigu, simpan nomor baris
+ * awal dan akhir. Pemuatan cabang lalu hanya membaca blok itu (dan memvalidasinya). Cabang yang
+ * barisnya terpecah tidak diindeks (dibaca dengan pemindaian lambat) sampai sheet diurutkan.
+ * Jalankan ulang setiap kali isi/urutan Merchants berubah.
+ */
+function buildBranchIndex() {
+  return runAdmin_('Bangun indeks cabang', buildBranchIndex_);
+}
+
+function buildBranchIndex_() {
+  var cfg = loadConfig_();
+  var pad = cfg.settings.KODE_CABANG_PAD_LENGTH;
+  var sheet = getSheet_(SHEETS.MERCHANTS);
+  var info = readHeaderInfo_(sheet, MERCHANT_COLUMNS);
+  assertHeaders_(SHEETS.MERCHANTS, info, ['kode_cabang_final']);
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) throw new AppError('VALIDATION_ERROR', 'Sheet Merchants belum berisi data.');
+  var colValues = function (name) {
+    var idx = info.index[name];
+    return idx === undefined ? null : sheet.getRange(2, idx + 1, lastRow - 1, 1).getValues();
+  };
+  var kodes = colValues('kode_cabang_final');
+  var namas = colValues('nama_cabang_final');
+  var areas = colValues('nama_area_final');
+  var grades = colValues(cfg.usak.source);
+  var kategoriMemo = {};
+  var runs = {}, order = [], prev = null, summary = {};
+  for (var i = 0; i < kodes.length; i++) {
+    var k = normKode_(kodes[i][0], pad);
+    if (!k) { prev = null; continue; }
+    var row = i + 2;
+    if (k !== prev) {
+      if (!runs[k]) { runs[k] = []; order.push(k); }
+      runs[k].push({ start: row, end: row });
+      prev = k;
+    } else {
+      runs[k][runs[k].length - 1].end = row;
+    }
+    var sm = summary[k];
+    if (!sm) sm = summary[k] = { nama: '', area: '', usak: 0, belum: 0, dicek: 0 };
+    if (!sm.nama && namas) sm.nama = str_(namas[i][0]);
+    if (!sm.area && areas) sm.area = str_(areas[i][0]);
+    var raw = grades ? grades[i][0] : '';
+    var memoKey = String(raw);
+    var kat = kategoriMemo[memoKey];
+    if (!kat) kat = kategoriMemo[memoKey] = classifyUsak_(raw, cfg.usak);
+    if (kat === USAK_KATEGORI.USAK) sm.usak++;
+    else if (kat === USAK_KATEGORI.BELUM_USAK) sm.belum++;
+    else sm.dicek++;
+  }
+  order.sort();
+  var stamp = isoNow_(), out = [], split = [], total = 0;
+  for (i = 0; i < order.length; i++) {
+    var rs = runs[order[i]];
+    if (rs.length !== 1) { split.push(order[i] + ' (' + rs.length + ' blok)'); continue; }
+    var smy = summary[order[i]];
+    out.push([order[i], rs[0].start, rs[0].end, rs[0].end - rs[0].start + 1, stamp, smy.nama, smy.area, smy.usak, smy.belum, smy.dicek]);
+    total += rs[0].end - rs[0].start + 1;
+  }
+  var idxSheet = getSheet_(SHEETS.BRANCH_INDEX, true) || getSpreadsheet_().insertSheet(SHEETS.BRANCH_INDEX);
+  ensureHeaders_(idxSheet, SHEET_SCHEMAS.BranchIndex);
+  applyTextFormats_(idxSheet, null, SHEET_TEXT_COLUMNS.BranchIndex);
+  var oldLast = idxSheet.getLastRow();
+  if (oldLast > 1) idxSheet.getRange(2, 1, oldLast - 1, SHEET_SCHEMAS.BranchIndex.length).clearContent();
+  if (out.length) {
+    ensureRowCapacity_(idxSheet, out.length + 1);
+    var canonical = SHEET_SCHEMAS.BranchIndex;
+    writeRowsByHeader_(idxSheet, canonical, out.map(function (r) {
+      return [forceTextCell_(String(r[0])), r[1], r[2], r[3], r[4], sanitizeCell_(String(r[5])), sanitizeCell_(String(r[6])), r[7], r[8], r[9]];
+    }));
+  }
+  bumpVersion_('DATA_VERSION');
+  var lines = [out.length + ' cabang diindeks (' + total + ' baris).'];
+  if (split.length) {
+    lines.push(split.length + ' cabang TIDAK diindeks karena barisnya terpecah: ' + split.slice(0, 10).join(', ') + (split.length > 10 ? ', …' : ''));
+    lines.push('Jalankan "Urutkan Merchants per cabang" lalu bangun indeks lagi.');
+  }
+  return lines;
+}
+
+/* ------------------------------------------------------------------ */
+/* Wilayah: area dan region                                            */
+/* ------------------------------------------------------------------ */
+
+function slugKode_(s) {
+  return String(s).toUpperCase().replace(/[^A-Z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+}
+
+/**
+ * Isi sheet Wilayah dengan semua area yang ada di BranchIndex (nama_area_final, kode_area bawaan
+ * AREA-<NAMA>, jumlah cabang & merchant). Kolom nama_region dan kode_region diisi admin. Aman diulang:
+ * baris yang sudah ada tidak ditimpa (hanya jumlahnya diperbarui). Juga memastikan role area & region ada.
+ */
+function prepareWilayahSheet() {
+  return runAdmin_('Siapkan sheet Wilayah', prepareWilayahSheet_);
+}
+
+function prepareWilayahSheet_() {
+  clearConfigMemo_();
+  var cfg = loadConfig_();
+  var idx = readTable_(SHEETS.BRANCH_INDEX, { optional: true, required: ['kode_cabang', 'nama_area'] });
+  var areas = {};
+  idx.rows.forEach(function (r) {
+    var area = str_(r.nama_area);
+    if (!area) return;
+    var a = areas[normKey_(area)] || (areas[normKey_(area)] = { nama: area, cabang: 0, merchant: 0 });
+    a.cabang++;
+    a.merchant += toNumber_(r.jumlah) || 0;
+  });
+  var keys = Object.keys(areas).sort();
+  if (!keys.length) {
+    throw new AppError('VALIDATION_ERROR', 'BranchIndex belum memuat nama_area. Jalankan "Bangun indeks cabang" (Setup dulu bila perlu).');
+  }
+  var sheet = getSheet_(SHEETS.WILAYAH, true) || getSpreadsheet_().insertSheet(SHEETS.WILAYAH);
+  ensureHeaders_(sheet, SHEET_SCHEMAS.Wilayah);
+  applyTextFormats_(sheet, null, SHEET_TEXT_COLUMNS.Wilayah);
+  var existing = readTable_(SHEETS.WILAYAH, { required: ['nama_area_final'] }).rows;
+  var have = {}, usedKodes = {};
+  existing.forEach(function (r) { have[normKey_(r.nama_area_final)] = r; if (str_(r.kode_area)) usedKodes[str_(r.kode_area).toUpperCase()] = true; });
+  var fresh = [], updated = 0;
+  keys.forEach(function (k) {
+    var a = areas[k];
+    if (have[k]) {
+      updateObjectFields_(SHEETS.WILAYAH, have[k]._row, { jumlah_cabang: a.cabang, jumlah_merchant: a.merchant });
+      updated++;
+      return;
+    }
+    var base = 'AREA-' + slugKode_(a.nama.replace(/^AREA\s+/i, ''));
+    var kode = base.substring(0, 32), n = 2;
+    while (usedKodes[kode]) kode = base.substring(0, 28) + '-' + (n++);
+    usedKodes[kode] = true;
+    fresh.push([a.nama, kode, '', '', a.cabang, a.merchant]);
+  });
+  if (fresh.length) {
+    ensureRowCapacity_(sheet, sheet.getLastRow() + fresh.length + 1);
+    writeRowsByHeader_(sheet, SHEET_SCHEMAS.Wilayah, fresh.map(function (r) {
+      return r.map(function (v, i) { return typeof v === 'string' ? cellValueFor_(SHEETS.WILAYAH, SHEET_SCHEMAS.Wilayah[i], v) : v; });
+    }));
+  }
+  // role area & region (hanya melihat) bila belum ada
+  var roleSheet = getSheet_(SHEETS.ROLES);
+  var haveRoles = {};
+  readTable_(SHEETS.ROLES, { required: ['role'] }).rows.forEach(function (r) { haveRoles[normKey_(r.role)] = true; });
+  var newRoles = DEFAULT_ROLES.filter(function (r) { return SCOPE_ROLES.indexOf(r[0]) >= 0 && !haveRoles[r[0]]; });
+  if (newRoles.length) writeRowsByHeader_(roleSheet, SHEET_SCHEMAS.Roles, newRoles);
+  bumpVersion_('DATA_VERSION');
+  bumpVersion_('CONFIG_VERSION');
+  var lines = [fresh.length + ' area baru ditambahkan ke Wilayah, ' + updated + ' area diperbarui jumlahnya (total ' + keys.length + ' area).'];
+  if (newRoles.length) lines.push('Role ditambahkan ke sheet Roles: ' + newRoles.map(function (r) { return r[0]; }).join(', ') + ' (hanya melihat).');
+  lines.push('Langkah berikut: isi kolom nama_region dan kode_region (mis. REG-SULUT) untuk setiap area, lalu jalankan "Buat akun area dan region".');
+  return lines;
+}
+
+/**
+ * Buat akun login untuk area (satu per baris Wilayah) dan region (satu per kode_region unik).
+ * Akun nonaktif tanpa kata sandi sampai hash diterapkan, seperti akun cabang.
+ */
+function createRegionAreaAccounts() {
+  return runAdmin_('Buat akun area dan region', createRegionAreaAccounts_);
+}
+
+function createRegionAreaAccounts_() {
+  var wil = readTable_(SHEETS.WILAYAH, { required: ['nama_area_final', 'kode_area', 'nama_region', 'kode_region'] }).rows;
+  if (!wil.length) throw new AppError('VALIDATION_ERROR', 'Sheet Wilayah kosong. Jalankan "Siapkan sheet Wilayah" dulu.');
+  var users = readTable_(SHEETS.USERS).rows;
+  var haveId = {}, haveKode = {};
+  users.forEach(function (u) { haveId[normKey_(u.user_id)] = true; haveKode[normKey_(u.kode_cabang)] = true; });
+  var rows = [], skipped = [], noRegion = [], existing = 0, regions = {};
+  var add = function (kode, nama, role) {
+    kode = str_(kode).toUpperCase();
+    if (!BRANCH_CODE_LOGIN_PATTERN.test(kode)) { skipped.push(kode || '(kosong)'); return; }
+    if (haveKode[normKey_(kode)] || haveId[normKey_(kode)]) { existing++; return; }
+    haveKode[normKey_(kode)] = true; haveId[normKey_(kode)] = true;
+    rows.push({ user_id: kode, kode_cabang: kode, nama_cabang: nama, password_hash: '', role: role, is_active: false });
+  };
+  wil.forEach(function (w) {
+    add(w.kode_area, str_(w.nama_area_final), 'area');
+    var kr = str_(w.kode_region).toUpperCase();
+    if (!kr) { noRegion.push(str_(w.nama_area_final)); return; }
+    if (!regions[kr]) { regions[kr] = str_(w.nama_region) || kr; }
+  });
+  Object.keys(regions).sort().forEach(function (kr) { add(kr, regions[kr], 'region'); });
+  if (rows.length) {
+    var usersSheet = getSheet_(SHEETS.USERS);
+    ensureRowCapacity_(usersSheet, usersSheet.getLastRow() + rows.length + 1);
+    applyTextFormats_(usersSheet, null, SHEET_TEXT_COLUMNS.Users);
+    var canonical = SHEET_SCHEMAS.Users;
+    writeRowsByHeader_(usersSheet, canonical, rows.map(function (r) {
+      return canonical.map(function (col) { return cellValueFor_(SHEETS.USERS, col, r[col]); });
+    }));
+    audit_({ user_id: 'admin', kode_cabang: '' }, 'ADMIN_CREATE_SCOPE_ACCOUNTS', '', rows.length + ' akun');
+  }
+  var lines = [rows.length + ' akun dibuat (' + rows.filter(function (r) { return r.role === 'area'; }).length + ' area, ' +
+    rows.filter(function (r) { return r.role === 'region'; }).length + ' region), nonaktif tanpa kata sandi.', existing + ' kode sudah punya akun dan dilewati.'];
+  if (noRegion.length) lines.push(noRegion.length + ' area belum punya kode_region (akun region belum dibuat untuk area itu): ' + noRegion.slice(0, 8).join(', ') + (noRegion.length > 8 ? ', …' : ''));
+  if (skipped.length) lines.push(skipped.length + ' kode tidak valid untuk login dilewati: ' + skipped.slice(0, 8).join(', '));
+  if (rows.length) lines.push('Langkah berikut: unduh sheet Users sebagai CSV lalu jalankan npm run passwords:bulk (mis. dengan --pattern).');
+  return lines;
+}
+
+/** Ukur waktu tiap tahap pemuatan satu cabang (jalur normal dan pemindaian tanpa indeks). */
+function measureBranchLoad() {
+  var ui, kode = '';
+  try {
+    assertAdmin_();
+    ui = SpreadsheetApp.getUi();
+  } catch (e) {
+    showAdminResult_('Ukur waktu muat cabang', ['GAGAL: ' + e.message]);
+    return;
+  }
+  var resp = ui.prompt('Ukur waktu muat cabang', 'Kode cabang (kosongkan untuk cabang pertama di BranchIndex):', ui.ButtonSet.OK_CANCEL);
+  if (resp.getSelectedButton() !== ui.Button.OK) return;
+  kode = str_(resp.getResponseText());
+  runAdmin_('Ukur waktu muat cabang', function () { return measureBranchLoad_(kode); });
+}
+
+function formatTiming_(t) {
+  var keys = ['dimensi_ms', 'header_ms', 'indeks_ms', 'kolom_kode_ms', 'cocok_ms', 'baca_ms', 'konversi_ms'];
+  var parts = [];
+  for (var i = 0; i < keys.length; i++) if (t[keys[i]] !== undefined) parts.push(keys[i].replace('_ms', '') + ' ' + t[keys[i]]);
+  return parts.join(', ') + ' (ms)';
+}
+
+function measureBranchLoad_(kodeInput) {
+  clearConfigMemo_();
+  var cfg = loadConfig_();
+  var pad = cfg.settings.KODE_CABANG_PAD_LENGTH;
+  var kode = normKode_(kodeInput, pad);
+  if (!kode) {
+    var map = branchIndexMap_(cfg);
+    var keys = Object.keys(map).sort();
+    if (!keys.length) throw new AppError('VALIDATION_ERROR', 'BranchIndex kosong. Isi kode cabang atau jalankan "Bangun indeks cabang".');
+    kode = keys[0];
+  }
+  var lines = ['Cabang: ' + kode];
+  var t = Date.now();
+  spreadsheetCache_ = null;
+  getSpreadsheet_();
+  lines.push('Buka spreadsheet: ' + (Date.now() - t) + ' ms');
+
+  var tm1 = {};
+  t = Date.now();
+  var r1 = readBranchMerchantsFromSheet_(kode, cfg, { timing: tm1 });
+  lines.push('Jalur normal [' + r1.scan_mode + (r1.index_stale ? ', indeks usang' : '') + ']: ' + (Date.now() - t) + ' ms, ' + r1.rows.length + ' merchant');
+  lines.push('  ' + formatTiming_(tm1));
+
+  var tm2 = {};
+  t = Date.now();
+  var r2 = readBranchMerchantsFromSheet_(kode, cfg, { timing: tm2, noIndex: true });
+  lines.push('Tanpa indeks (pemindaian) [' + r2.scan_mode + ']: ' + (Date.now() - t) + ' ms, ' + r2.rows.length + ' merchant');
+  lines.push('  ' + formatTiming_(tm2));
+  if (r1.rows.length !== r2.rows.length) lines.push('PERINGATAN: jumlah merchant berbeda antara dua jalur. Bangun ulang indeks.');
+  return lines;
 }
 
 /** Jumlah cabang dan segmen kontigu kode_cabang_final di sheet Merchants. */

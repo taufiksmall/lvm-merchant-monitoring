@@ -13,7 +13,11 @@ const NAV = [
   { href: "/merchants", label: "Merchant", icon: Store, match: (p: string) => p.startsWith("/merchants") },
 ];
 
-const ROLE_LABELS: Record<string, string> = { petugas: "Petugas", supervisor: "Supervisor", viewer: "Viewer" };
+const ROLE_LABELS: Record<string, string> = { petugas: "Petugas", supervisor: "Supervisor", viewer: "Viewer", area: "Area", region: "Region" };
+
+const NAV_PEMANTAUAN = [
+  { href: "/", label: "Pemantauan", icon: LayoutDashboard, match: (p: string) => p === "/" || p.startsWith("/pemantauan") || p.startsWith("/merchants") },
+];
 
 export function AppShell({ user, children }: { user: SessionUser; children: ReactNode }) {
   const pathname = usePathname();
@@ -42,7 +46,7 @@ export function AppShell({ user, children }: { user: SessionUser; children: Reac
             <span className="hidden text-sm lg:inline">{appName}</span>
           </Link>
           <nav aria-label="Navigasi utama" className="flex items-center gap-1">
-            {NAV.map(({ href, label, icon: Icon, match }) => {
+            {(user.akses === "cabang" ? NAV : NAV_PEMANTAUAN).map(({ href, label, icon: Icon, match }) => {
               const active = match(pathname);
               return (
                 <Link

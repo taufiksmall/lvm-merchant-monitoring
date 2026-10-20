@@ -244,9 +244,14 @@ export function createRuntime(options = {}) {
     ScriptApp: { getProjectTriggers: () => [], deleteTrigger() {}, newTrigger: () => ({ timeBased: () => ({ everyDays: () => ({ atHour: () => ({ create() {} }) }) }) }) },
   };
   const context = vm.createContext(sandbox);
-  const files = fs.readdirSync(srcDir).filter((f) => f.endsWith('.js') && !f.startsWith('._')).sort();
-  for (const f of files) {
-    vm.runInContext(fs.readFileSync(path.join(srcDir, f), 'utf8'), context, { filename: `apps-script/src/${f}` });
+  if (process.env.GAS_BUNDLE === '1') {
+    // Uji kesetaraan: jalankan hasil gabungan (npm run gas:bundle) sebagai satu file, seperti di editor Apps Script.
+    vm.runInContext(fs.readFileSync(path.join(projectRoot, 'apps-script', 'dist', 'Code.gs'), 'utf8'), context, { filename: 'apps-script/dist/Code.gs' });
+  } else {
+    const files = fs.readdirSync(srcDir).filter((f) => f.endsWith('.js') && !f.startsWith('._')).sort();
+    for (const f of files) {
+      vm.runInContext(fs.readFileSync(path.join(srcDir, f), 'utf8'), context, { filename: `apps-script/src/${f}` });
+    }
   }
   // Jam yang dapat dimajukan saat pengujian.
   context.now_ = () => new Date(nowMs());

@@ -690,3 +690,285 @@ describe('definisi USAK bawaan setup', () => {
     assert.equal(sheet.getRange(3, 2).getValue(), 'BELUM_USAK');
   });
 });
+
+describe('API_SHARED_SECRET dari menu admin', () => {
+  test('validasi secret dan penyimpanan ke Script Properties', () => {
+    const rt = createRuntime({ quiet: true });
+    rt.run('setupSheets_');
+    const c = rt.context;
+    assert.match(c.apiSecretProblem_('a'.repeat(31)), /minimal 32/);
+    assert.match(c.apiSecretProblem_('a'.repeat(201)), /maksimal 200/);
+    assert.match(c.apiSecretProblem_('a'.repeat(20) + ' ' + 'b'.repeat(20)), /ASCII/);
+    assert.equal(c.apiSecretProblem_('ab'.repeat(32)), '');
+
+    // sebelum diatur: semua request ditolak dengan CONFIG_ERROR
+    assert.equal(rt.request({ action: 'auth.me', api_key: 'x'.repeat(40) }).error.code, 'CONFIG_ERROR');
+    assert.throws(() => rt.run('saveApiSecret_', 'pendek'), /minimal 32/);
+    const secret = 'f0'.repeat(32);
+    const lines = rt.run('saveApiSecret_', secret);
+    assert.match(lines[0], /64 karakter/);
+    assert.ok(!lines.join('\n').includes(secret));
+    // sesudah diatur: kunci salah ditolak, kunci benar diterima (lalu gagal di sesi, bukan di klien)
+    assert.equal(rt.request({ action: 'auth.me', api_key: 'x'.repeat(40) }).error.code, 'UNAUTHORIZED_CLIENT');
+    assert.equal(rt.request({ action: 'auth.me', api_key: secret }).error.code, 'UNAUTHENTICATED');
+    // nilai secret tidak masuk AuditLog
+    const audit = JSON.stringify(rt.spreadsheet.getSheetByName('AuditLog')._dump());
+    assert.ok(audit.includes('ADMIN_SET_API_SECRET'));
+    assert.ok(!audit.includes(secret));
+  });
+});
+
+describe('indeks cabang', () => {
+  const read = (rt, kode, opts) => rt.run('readBranchMerchantsFromSheet_', kode, rt.run('loadConfig_'), opts);
+  const ids = (res) => res.rows.map((r) => r[0]).sort();
+
+  test('impor membangun indeks dan pembacaan memakai jalur indeks dengan hasil sama seperti pemindaian', () => {
+    const { rt } = setup();
+    const idx = sheetRows(rt, 'BranchIndex');
+    assert.deepEqual(idx.map((r) => r.kode_cabang), ['0101', '0102', '0201']);
+    for (const r of idx) assert.equal(Number(r.baris_akhir) - Number(r.baris_awal) + 1, Number(r.jumlah));
+
+    const fast = read(rt, '0101');
+    const scan = read(rt, '0101', { noIndex: true });
+    assert.equal(fast.scan_mode, 'index');
+    assert.notEqual(scan.scan_mode, 'index');
+    assert.equal(fast.rows.length, 101);
+    assert.deepEqual(ids(fast), ids(scan));
+    assert.equal(!!fast.index_stale, false);
+  });
+
+  test('jalur indeks hanya membaca blok cabang (tidak membaca kolom kode seluruh sheet)', () => {
+    const { rt } = setup();
+    const timing = {};
+    read(rt, '0102', { timing });
+    assert.ok('baca_ms' in timing && 'indeks_ms' in timing);
+    assert.ok(!('kolom_kode_ms' in timing), 'tanpa pemindaian kolom kode');
+    const t2 = {};
+    read(rt, '0102', { timing: t2, noIndex: true });
+    assert.ok('kolom_kode_ms' in t2);
+  });
+
+  test('indeks usang terdeteksi: hasil tetap benar, ditandai, dan dashboard memberi peringatan', () => {
+    const { rt, call, login } = setup();
+    const sheet = rt.spreadsheet.getSheetByName('Merchants');
+    const header = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+    const kcol = header.indexOf('kode_cabang_final') + 1;
+    const entry = sheetRows(rt, 'BranchIndex').find((r) => r.kode_cabang === '0101');
+    // satu baris di tengah blok 0101 dipindah ke cabang lain: indeks tidak lagi cocok
+    sheet._setRaw(Number(entry.baris_awal) + 10, kcol, '0102');
+    rt.run('bumpVersion_', 'DATA_VERSION');
+    rt.clearCache();
+    const res = read(rt, '0101');
+    assert.equal(res.index_stale, true);
+    assert.notEqual(res.scan_mode, 'index');
+    assert.equal(res.rows.length, 100); // hasil mengikuti isi sheet, bukan indeks
+    const dash = call('dashboard.summary', {}, login('0101', PW.petugas0101)).data;
+    assert.equal(dash.usak.total_merchant, 100);
+    assert.ok(dash.warnings.some((w) => w.code === 'BRANCH_INDEX_STALE'));
+    // membangun ulang indeks memulihkan jalur cepat; cabang yang terpecah dilaporkan
+    const lines = rt.run('buildBranchIndex_').join('\n');
+    assert.match(lines, /2 cabang TIDAK diindeks.*0101 \(2 blok\), 0102 \(2 blok\)/);
+  });
+
+  test('cabang yang barisnya terpecah tidak diindeks, tetap terbaca benar lewat pemindaian', () => {
+    const { rt } = setup();
+    const sheet = rt.spreadsheet.getSheetByName('Merchants');
+    const rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, sheet.getLastColumn()).getValues();
+    let seed = 3;
+    const rnd = () => ((seed = (seed * 1664525 + 1013904223) % 4294967296) / 4294967296);
+    for (let i = rows.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [rows[i], rows[j]] = [rows[j], rows[i]]; }
+    rows.forEach((line, r) => line.forEach((v, c) => sheet._setRaw(2 + r, c + 1, v)));
+    const lines = rt.run('buildBranchIndex_').join('\n');
+    assert.match(lines, /0 cabang diindeks/);
+    assert.match(lines, /3 cabang TIDAK diindeks/);
+    const res = read(rt, '0201');
+    assert.notEqual(res.scan_mode, 'index');
+    assert.equal(res.rows.length, 120);
+    // urutkan -> indeks otomatis terbangun
+    const sorted = rt.run('sortMerchantsByBranch_').join('\n');
+    assert.match(sorted, /3 cabang diindeks/);
+    assert.equal(read(rt, '0201').scan_mode, 'index');
+  });
+
+  test('menu ukur waktu melaporkan kedua jalur', () => {
+    const { rt } = setup();
+    const lines = rt.run('measureBranchLoad_', '0101').join('\n');
+    assert.match(lines, /Cabang: 0101/);
+    assert.match(lines, /Jalur normal \[index\].*101 merchant/);
+    assert.match(lines, /Tanpa indeks \(pemindaian\)/);
+    assert.ok(!/PERINGATAN/.test(lines));
+  });
+});
+
+describe('mid_static sebagai ID tampilan', () => {
+  test('daftar & dasbor memuat mid_static, dan pencarian bisa memakai mid_static', () => {
+    const { rt, call, login } = setup();
+    const token = login('0101', PW.petugas0101);
+    const list = call('merchants.list', { page_size: 3 }, token).data;
+    assert.ok(list.items.every((m) => /^MS\d+$/.test(m.mid_static) && m.store_id.startsWith('S0101')));
+    assert.ok(list.search_fields.includes('mid_static'));
+    const target = list.items[0];
+    const found = call('merchants.list', { q: target.mid_static }, token).data;
+    assert.ok(found.items.some((m) => m.store_id === target.store_id));
+    const dash = call('dashboard.summary', {}, token).data;
+    assert.ok(dash.prioritas_teratas.every((m) => /^MS\d+$/.test(m.mid_static)));
+  });
+});
+
+describe('prioritas Tiering', () => {
+  test('Tier 2 > Tier 3 > Tier 4/5; Tier 1 tidak perlu dikejar', () => {
+    const { rt, call, login } = setup();
+    const token = login('0101', PW.petugas0101);
+    const all = call('merchants.list', { page_size: 100, sort: 'priority' }, token).data;
+    const tierOf = (m) => m.Tiering;
+    const perlu = all.items.filter((m) => m.priority.perlu_follow_up);
+    assert.ok(perlu.length > 0 && perlu.every((m) => tierOf(m) !== 'Tier 1'));
+    assert.ok(all.items.filter((m) => tierOf(m) === 'Tier 1').every((m) => !m.priority.perlu_follow_up));
+    // urutan skor: seluruh Tier 2 berada di atas Tier 3, dan Tier 3 di atas Tier 4+
+    const rank = { 'Tier 2': 3, 'Tier 3': 2, 'Tier 4': 1, 'Tier 5': 1 };
+    const seq = perlu.map((m) => rank[tierOf(m)] || 0);
+    for (let i = 1; i < seq.length; i++) assert.ok(seq[i - 1] >= seq[i], 'urutan prioritas menurun menurut tier');
+    const first = perlu[0];
+    assert.ok(first.priority.reasons.some((r) => /^Tier \d/.test(r.label)));
+  });
+
+  test('menu aturan bawaan menimpa PriorityRules lama dan mengatur skor minimum', () => {
+    const { rt, call, login } = setup();
+    const rules = rt.spreadsheet.getSheetByName('PriorityRules');
+    rules.getRange(2, 1, rules.getLastRow() - 1, rules.getLastColumn()).clearContent();
+    rt.spreadsheet.getSheetByName('Settings');
+    const lines = rt.run('applyDefaultPriorityRules_').join('\n');
+    assert.match(lines, /PRIORITY_MIN_SCORE = 10/);
+    const cfg = rt.run('loadConfig_');
+    assert.equal(cfg.rules.list.filter((r) => /^Tier/.test(r.label)).length, 4);
+    assert.equal(cfg.settings.PRIORITY_MIN_SCORE, '10');
+    const token = login('0101', PW.petugas0101);
+    assert.ok(call('dashboard.summary', {}, token).data.follow_up.perlu_follow_up > 0);
+  });
+});
+
+describe('akun area dan region', () => {
+  function setupScope() {
+    const ctx = setup();
+    const { rt } = ctx;
+    const idx = sheetRows(rt, 'BranchIndex');
+    assert.equal(idx.length, 3);
+    const lines = rt.run('prepareWilayahSheet_').join('\n');
+    assert.match(lines, /2 area baru/);
+    const wsheet = rt.spreadsheet.getSheetByName('Wilayah');
+    const wil = sheetRows(rt, 'Wilayah');
+    const header = wsheet.getRange(1, 1, 1, wsheet.getLastColumn()).getValues()[0];
+    wil.forEach((w, i) => {
+      wsheet._setRaw(2 + i, header.indexOf('nama_region') + 1, w.nama_area_final.includes('Bandung') ? 'Region Jabar A' : 'Region Jabar B');
+      wsheet._setRaw(2 + i, header.indexOf('kode_region') + 1, w.nama_area_final.includes('Bandung') ? 'REG-JABAR-A' : 'REG-JABAR-B');
+    });
+    // satu region lain yang mencakup kedua area
+    return ctx;
+  }
+  const activate = (rt, userId, password) => {
+    const users = rt.spreadsheet.getSheetByName('Users');
+    const rows = sheetRows(rt, 'Users');
+    const r = rows.findIndex((u) => u.user_id === userId) + 2;
+    const header = users.getRange(1, 1, 1, users.getLastColumn()).getValues()[0];
+    users._setRaw(r, header.indexOf('password_hash') + 1, rt.context.hashPassword_(password, 20000));
+    users._setRaw(r, header.indexOf('is_active') + 1, true);
+  };
+
+  test('indeks memuat ringkasan USAK per cabang', () => {
+    const { rt } = setup();
+    const idx = Object.fromEntries(sheetRows(rt, 'BranchIndex').map((r) => [r.kode_cabang, r]));
+    assert.equal(Number(idx['0101'].jumlah_usak), 43);
+    assert.equal(Number(idx['0101'].jumlah), 101);
+    assert.equal(Number(idx['0101'].jumlah_belum_usak), 58);
+    assert.equal(idx['0101'].nama_area, 'Area Contoh Bandung Raya');
+    assert.equal(Number(idx['0201'].jumlah_perlu_dicek), 8);
+  });
+
+  test('sheet Wilayah dan pembuatan akun area/region', () => {
+    const { rt } = setupScope();
+    const wil = sheetRows(rt, 'Wilayah');
+    assert.deepEqual(wil.map((w) => w.kode_area).sort(), ['AREA-CONTOH-BANDUNG-RAYA', 'AREA-CONTOH-PRIANGAN-TIMUR']);
+    assert.equal(Number(wil.find((w) => w.kode_area === 'AREA-CONTOH-BANDUNG-RAYA').jumlah_cabang), 2);
+    assert.ok(sheetRows(rt, 'Roles').some((r) => r.role === 'area') && sheetRows(rt, 'Roles').some((r) => r.role === 'region'));
+    const lines = rt.run('createRegionAreaAccounts_').join('\n');
+    assert.match(lines, /4 akun dibuat \(2 area, 2 region\)/);
+    const users = sheetRows(rt, 'Users');
+    const scope = users.filter((u) => ['area', 'region'].includes(u.role));
+    assert.deepEqual(scope.map((u) => u.user_id).sort(), ['AREA-CONTOH-BANDUNG-RAYA', 'AREA-CONTOH-PRIANGAN-TIMUR', 'REG-JABAR-A', 'REG-JABAR-B']);
+    assert.ok(scope.every((u) => u.password_hash === ''));
+    assert.match(rt.run('createRegionAreaAccounts_')[0], /^0 akun dibuat/); // idempoten
+  });
+
+  test('akun area: ringkasan cabang urut rasio terendah, tertutup di cakupannya, hanya melihat', () => {
+    const { rt, call } = setupScope();
+    rt.run('createRegionAreaAccounts_');
+    activate(rt, 'AREA-CONTOH-BANDUNG-RAYA', 'PolaArea-Uji1');
+    const login = call('auth.login', { kode_cabang: 'AREA-CONTOH-BANDUNG-RAYA', password: 'PolaArea-Uji1' });
+    assert.equal(login.ok, true, JSON.stringify(login.error));
+    assert.equal(login.data.user.akses, 'area');
+    const token = login.data.token;
+    const sum = call('region.summary', {}, token).data;
+    assert.equal(sum.cakupan.jenis, 'area');
+    assert.deepEqual(sum.cabang.map((c) => c.kode_cabang), ['0101', '0102']); // 42,6% lalu 55%
+    assert.equal(sum.cabang[0].total_merchant, 101);
+    assert.equal(sum.cabang[0].merchant_usak, 43);
+    assert.equal(sum.cabang[0].gap_usak_50, 8);
+    assert.equal(sum.cabang[0].tercapai, false);
+    assert.equal(sum.cabang[1].gap_usak_50, 0);
+    assert.equal(sum.usak.total_merchant, 181);
+    assert.equal(sum.cabang_belum, 1);
+    assert.ok(!JSON.stringify(sum).includes('0201'));
+
+    // klik cabang: daftar merchant yang harus di-follow-up
+    const list = call('merchants.list', { kode_cabang: '0101', follow_up: 'perlu', page_size: 100 }, token);
+    assert.equal(list.ok, true);
+    assert.ok(list.data.items.length > 0 && list.data.items.every((m) => m.kode_cabang_final === '0101'));
+    const detail = call('merchants.detail', { kode_cabang: '0101', store_id: list.data.items[0].store_id }, token);
+    assert.equal(detail.ok, true);
+    assert.match(detail.data.merchant.account_number, /^•+\d{4}$/);
+    assert.equal(detail.data.can_write_follow_up, false);
+
+    // di luar cakupan / tanpa cabang / menulis
+    assert.equal(call('merchants.list', { kode_cabang: '0201' }, token).error.code, 'NOT_FOUND');
+    assert.equal(call('merchants.detail', { kode_cabang: '0201', store_id: 'S02010001' }, token).error.code, 'NOT_FOUND');
+    assert.equal(call('merchants.list', {}, token).error.code, 'VALIDATION_ERROR');
+    assert.equal(call('followups.create', { kode_cabang: '0101', store_id: list.data.items[0].store_id, status_follow_up: 'DIJADWALKAN' }, token).error.code, 'FORBIDDEN');
+    assert.equal(call('merchants.revealSensitive', { kode_cabang: '0101', store_id: list.data.items[0].store_id }, token).error.code, 'FORBIDDEN');
+    assert.equal(call('dashboard.summary', { kode_cabang: '0102' }, token).data.usak.total_merchant, 80);
+  });
+
+  test('akun region mencakup area-area di bawahnya; akun cabang tidak bisa memakai fitur ini', () => {
+    const { rt, call, login } = setupScope();
+    // satu region untuk kedua area
+    const w = rt.spreadsheet.getSheetByName('Wilayah');
+    const header = w.getRange(1, 1, 1, w.getLastColumn()).getValues()[0];
+    for (let r = 2; r <= 3; r++) {
+      w._setRaw(r, header.indexOf('nama_region') + 1, 'Region Jabar');
+      w._setRaw(r, header.indexOf('kode_region') + 1, 'REG-JABAR');
+    }
+    rt.run('createRegionAreaAccounts_');
+    activate(rt, 'REG-JABAR', 'PolaRegion-Uji1');
+    const t = call('auth.login', { kode_cabang: 'REG-JABAR', password: 'PolaRegion-Uji1' }).data.token;
+    const sum = call('region.summary', {}, t).data;
+    assert.equal(sum.cakupan.jenis, 'region');
+    assert.deepEqual(sum.cabang.map((c) => c.kode_cabang), ['0201', '0101', '0102']); // rasio naik: 25%, 42,6%, 55%
+    assert.equal(sum.area.length, 2);
+    // akun cabang ditolak dan parameter kode_cabang diabaikan
+    const petugas = login('0101', PW.petugas0101);
+    assert.equal(call('region.summary', {}, petugas).error.code, 'FORBIDDEN');
+    assert.equal(call('merchants.list', { kode_cabang: '0102', page_size: 100 }, petugas).data.total, 101);
+  });
+
+  test('area tanpa pemetaan Wilayah ditolak dengan pesan jelas', () => {
+    const { rt, call } = setupScope();
+    rt.run('createRegionAreaAccounts_');
+    activate(rt, 'AREA-CONTOH-PRIANGAN-TIMUR', 'PolaArea-Uji2');
+    const t = call('auth.login', { kode_cabang: 'AREA-CONTOH-PRIANGAN-TIMUR', password: 'PolaArea-Uji2' }).data.token;
+    assert.equal(call('region.summary', {}, t).data.cabang.length, 1);
+    // hapus baris Wilayah area itu -> cakupan kosong
+    const w = rt.spreadsheet.getSheetByName('Wilayah');
+    w.getRange(2, 1, w.getLastRow() - 1, w.getLastColumn()).clearContent();
+    rt.run('bumpVersion_', 'DATA_VERSION');
+    assert.equal(call('region.summary', {}, t).error.code, 'FORBIDDEN');
+  });
+});

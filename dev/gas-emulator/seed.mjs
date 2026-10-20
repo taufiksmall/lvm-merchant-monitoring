@@ -13,8 +13,30 @@ function readCsv(name) {
   return parseCsv(fs.readFileSync(path.join(projectRoot, 'sample-data', name), 'utf8'));
 }
 
+/** Akun demo area & region untuk emulator: AREA-CONTOH-BANDUNG-RAYA / DemoArea1234 dan REG-JABAR / DemoRegion1234. */
+function seedScopeDemo(rt) {
+  rt.run('prepareWilayahSheet_');
+  const w = rt.spreadsheet.getSheetByName('Wilayah');
+  const header = w.getRange(1, 1, 1, w.getLastColumn()).getValues()[0];
+  for (let r = 2; r <= w.getLastRow(); r++) {
+    w._setRaw(r, header.indexOf('nama_region') + 1, 'Region Jawa Barat');
+    w._setRaw(r, header.indexOf('kode_region') + 1, 'REG-JABAR');
+  }
+  rt.run('createRegionAreaAccounts_');
+  const users = rt.spreadsheet.getSheetByName('Users');
+  const uh = users.getRange(1, 1, 1, users.getLastColumn()).getValues()[0];
+  const demo = { 'AREA-CONTOH-BANDUNG-RAYA': 'DemoArea1234', 'REG-JABAR': 'DemoRegion1234' };
+  for (let r = 2; r <= users.getLastRow(); r++) {
+    const id = users.getRange(r, uh.indexOf('user_id') + 1).getValue();
+    if (demo[id]) {
+      users._setRaw(r, uh.indexOf('password_hash') + 1, rt.context.hashPassword_(demo[id], 100000));
+      users._setRaw(r, uh.indexOf('is_active') + 1, true);
+    }
+  }
+}
+
 /**
- * @param {{ secret?: string, quiet?: boolean, withUsakConfig?: boolean }} options
+ * @param {{ secret?: string, quiet?: boolean, withUsakConfig?: boolean, scopeDemo?: boolean }} options
  */
 export function createSeededRuntime(options = {}) {
   const rt = createRuntime({
@@ -42,6 +64,7 @@ export function createSeededRuntime(options = {}) {
   rt.spreadsheet.insertSheet('Import_Merchants')._loadRaw(merchants);
   rt.run('bumpVersion_', 'CONFIG_VERSION');
   const lines = rt.run('applyMerchantImport_');
+  if (options.scopeDemo) seedScopeDemo(rt);
   rt.clearCache();
   return { rt, importLines: lines };
 }

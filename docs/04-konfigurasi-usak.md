@@ -85,6 +85,12 @@ Field turunan:
 | `_ada_follow_up` | `TRUE`/`FALSE` |
 | `_hari_sejak_follow_up` | Jumlah hari sejak follow-up terakhir |
 
+### Prioritas Tiering (definisi bisnis, 2026-10-20)
+
+Kolom `Tiering` menentukan urutan dikejar: **Tier 2 lebih dulu, lalu Tier 3** (paling dekat ke Tier 1), **Tier 4–5 prioritas terendah**, **Tier 1 tidak perlu dikejar**. Definisi tier (dihitung di data sumber, bukan di aplikasi): Tier 1 = ≥20 trx & SV ≥Rp100 rb; Tier 2 = ≥20 trx & SV <Rp100 rb; Tier 3 = SV ≥Rp100 rb & trx <20; Tier 4–5 = trx <20 & SV <Rp100 rb.
+
+Aturan R06–R09 memberi bobot 30 / 20 / 10 / 10, dan `PRIORITY_MIN_SCORE` = 10 sehingga hanya Tier 2–5 yang ditandai "perlu follow-up" (aturan R01–R04 maksimal 8 poin, jadi hanya pembeda dalam tier yang sama). Pencocokan memakai `contains` pada teks seperti `Tier 2 (High Potential)`. Spreadsheet yang sudah punya `PriorityRules` tidak berubah otomatis: jalankan **LVM Admin › Terapkan aturan prioritas bawaan (Tiering)**.
+
 ### Aturan bawaan (asumsi awal — silakan disesuaikan)
 
 | rule_id | aktif | label | kondisi | bobot |

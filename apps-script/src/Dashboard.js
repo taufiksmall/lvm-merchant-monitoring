@@ -116,6 +116,7 @@ function dashboardSummary_(ctx) {
   var prioritas = top.slice(0, 5).map(function (x) {
     return {
       store_id: x.m.store_id,
+      mid_static: x.m.mid_static,
       store_name: x.m.store_name,
       usak: usakInfo_(x.kategori, x.m, source),
       priority: priorityInfo_(x),
@@ -144,6 +145,12 @@ function dashboardSummary_(ctx) {
     warnings.push({
       code: 'MISSING_COLUMNS',
       message: 'Kolom berikut tidak ada di sheet Merchants dan ditampilkan kosong: ' + missing.join(', ') + '.',
+    });
+  }
+  if (view.index_stale) {
+    warnings.push({
+      code: 'BRANCH_INDEX_STALE',
+      message: 'Indeks cabang tidak cocok dengan isi sheet Merchants sehingga data dimuat lebih lambat. Minta admin menjalankan menu "Bangun indeks cabang".',
     });
   }
   if (view.scan_mode === 'full') {

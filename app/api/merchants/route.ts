@@ -2,6 +2,9 @@ import type { NextRequest } from "next/server";
 import { FILTER_COLUMNS } from "@/lib/columns";
 import { forwardAction } from "@/lib/server/http";
 
+// Apps Script bisa memakan puluhan detik pada pemuatan pertama cabang.
+export const maxDuration = 60;
+
 /**
  * GET /api/merchants?q=&page=&page_size=&sort=&dir=&follow_up=&status_follow_up=&kategori_usak=&<kolom filter>=
  * Pencarian, filter, pengurutan, dan pagination dikerjakan di Apps Script.
@@ -15,6 +18,7 @@ export async function GET(req: NextRequest) {
     if (values.length) filters[col] = values.slice(0, 20);
   }
   const payload = {
+    kode_cabang: sp.get("kode_cabang") ?? "",
     q: sp.get("q") ?? "",
     page: sp.get("page") ?? "1",
     page_size: sp.get("page_size") ?? "",

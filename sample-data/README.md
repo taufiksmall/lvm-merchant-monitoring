@@ -20,5 +20,7 @@ Semua data di folder ini **dibuat acak** oleh `npm run sample-data` (`scripts/ge
 | 0201 | DemoPetugas0201 | U0201 | petugas | ada `grading_trx` kosong & tidak dikenali |
 | 0301 | DemoNonaktif0301 | U0301 | petugas | `is_active = FALSE` (login ditolak) |
 | 0401 | DemoKosong0401 | U0401 | petugas | cabang tanpa merchant (empty state) |
+| AREA-CONTOH-BANDUNG-RAYA | DemoArea1234 | AREA-CONTOH-BANDUNG-RAYA | area | pemantauan 2 cabang (0101, 0102); hanya emulator `npm run dev:api` |
+| REG-JABAR | DemoRegion1234 | REG-JABAR | region | pemantauan semua cabang contoh (area + wilayah dibuat otomatis oleh emulator) |
 
 Emulator membaca CSV ini setiap kali dijalankan dan menyimpan perubahan (follow-up, sesi) hanya di memori. Jalankan dengan `EMULATOR_NO_USAK_CONFIG=1 npm run dev:api` untuk melihat tampilan saat definisi USAK belum dikonfigurasi, atau `EMULATOR_LATENCY_MS=1500` untuk meniru lambatnya Apps Script.

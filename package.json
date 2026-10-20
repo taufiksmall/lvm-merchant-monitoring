@@ -13,10 +13,12 @@
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "node --test tests/apps-script.test.mjs",
+    "test": "node --test tests/*.test.mjs",
     "hash-password": "node scripts/hash-password.mjs",
+    "passwords:bulk": "node scripts/bulk-passwords.mjs",
     "validate:csv": "node scripts/validate-merchants-csv.mjs",
     "sample-data": "node scripts/generate-sample-data.mjs",
+    "gas:bundle": "node scripts/bundle-apps-script.mjs",
     "gas:push": "cd apps-script && clasp push"
   },
   "dependencies": {

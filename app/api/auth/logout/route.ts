@@ -2,6 +2,9 @@ import type { NextRequest } from "next/server";
 import { callAppsScript } from "@/lib/server/apps-script";
 import { clearSessionCookie, jsonOk, rejectCrossSite, sessionToken } from "@/lib/server/http";
 
+// Apps Script bisa memakan puluhan detik pada pemuatan pertama cabang.
+export const maxDuration = 60;
+
 export async function POST(req: NextRequest) {
   const rejected = rejectCrossSite(req);
   if (rejected) return rejected;

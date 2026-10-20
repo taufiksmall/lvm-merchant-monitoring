@@ -419,7 +419,7 @@ function PriorityList({ data }: { data: DashboardSummary }) {
               <Link href={`/merchants/${encodeURIComponent(m.store_id)}`} className="-mx-2 flex flex-wrap items-center gap-x-4 gap-y-1.5 rounded-md px-2 py-2.5 hover:bg-surface-2">
                 <div className="min-w-0 flex-1 basis-48">
                   <p className="truncate text-sm font-medium text-ink">{m.store_name}</p>
-                  <p className="truncate text-xs text-ink-2">{m.store_id} · {m.priority.reasons.map((r) => r.label).join(", ")}</p>
+                  <p className="truncate text-xs text-ink-2">{m.mid_static || m.store_id} · {m.priority.reasons.map((r) => r.label).join(", ")}</p>
                 </div>
                 <div className="flex items-center gap-2">
                   <UsakBadge usak={m.usak} configured={data.usak.configured} />

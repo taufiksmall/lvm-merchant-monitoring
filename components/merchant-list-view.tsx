@@ -3,7 +3,7 @@
 import { ArrowDown, ArrowUp, ArrowUpDown, ChevronLeft, ChevronRight, Search, SlidersHorizontal, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { COLUMN_LABELS, FILTER_COLUMNS, SORT_OPTIONS } from "@/lib/columns";
 import { fmtCompact, fmtNumber, fmtRupiah } from "@/lib/format";
 import { useApi } from "@/lib/client/use-api";
@@ -14,13 +14,18 @@ import { Alert, Button, Card, EmptyState, ErrorState, PageHeader, Skeleton, cx }
 const PAGE_SIZES = ["10", "25", "50", "100"];
 const FILTER_KEYS = ["kategori_usak", "follow_up", "status_follow_up", ...FILTER_COLUMNS] as const;
 
-export function MerchantListView() {
+export function MerchantListView({ branch }: { branch?: string } = {}) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const query = searchParams.toString();
-  const list = useApi<MerchantList>(`/api/merchants?${query}`);
-  const options = useApi<FilterOptions>("/api/merchants/filter-options");
+  const apiQuery = useMemo(() => {
+    const sp = new URLSearchParams(query);
+    if (branch) sp.set("kode_cabang", branch);
+    return sp.toString();
+  }, [query, branch]);
+  const list = useApi<MerchantList>(`/api/merchants?${apiQuery}`);
+  const options = useApi<FilterOptions>(branch ? `/api/merchants/filter-options?kode_cabang=${encodeURIComponent(branch)}` : "/api/merchants/filter-options");
 
   const qParam = searchParams.get("q") ?? "";
   const [q, setQ] = useState(qParam);
@@ -77,8 +82,8 @@ export function MerchantListView() {
 
   const data = list.data;
   const searchHint = data?.search_fields.includes("account_number")
-    ? "Cari nama merchant, store ID, pemilik, atau no. rekening"
-    : "Cari nama merchant, store ID, atau nama pemilik";
+    ? "Cari nama merchant, MID, pemilik, atau no. rekening"
+    : "Cari nama merchant, MID, atau nama pemilik";
 
   return (
     <div className="space-y-4">
@@ -123,8 +128,8 @@ export function MerchantListView() {
             </Card>
           ) : (
             <>
-              <MerchantTable items={data.items} today={data.today} sort={data.sort} dir={data.dir} onSort={setSort} configured={data.usak_configured} source={data.usak_source} />
-              <MerchantCards items={data.items} today={data.today} configured={data.usak_configured} source={data.usak_source} />
+              <MerchantTable items={data.items} today={data.today} sort={data.sort} dir={data.dir} onSort={setSort} configured={data.usak_configured} source={data.usak_source} branch={branch} />
+              <MerchantCards items={data.items} today={data.today} configured={data.usak_configured} source={data.usak_source} branch={branch} />
               <Pagination data={data} update={update} />
             </>
           )}
@@ -295,15 +300,19 @@ function SortIcon({ active, dir }: { active: boolean; dir: "asc" | "desc" }) {
   return dir === "asc" ? <ArrowUp aria-hidden className="size-3" /> : <ArrowDown aria-hidden className="size-3" />;
 }
 
-function cell(m: MerchantListItem, key: string, today: string, configured: boolean, source: string) {
+function detailHref(storeId: string, branch?: string) {
+  return `/merchants/${encodeURIComponent(storeId)}${branch ? `?cabang=${encodeURIComponent(branch)}` : ""}`;
+}
+
+function cell(m: MerchantListItem, key: string, today: string, configured: boolean, source: string, branch?: string) {
   switch (key) {
     case "merchant":
       return (
         <div className="min-w-0">
-          <Link href={`/merchants/${encodeURIComponent(m.store_id)}`} className="block truncate font-medium text-accent-ink hover:underline">
-            {m.store_name || m.store_id}
+          <Link href={detailHref(m.store_id, branch)} className="block truncate font-medium text-accent-ink hover:underline">
+            {m.store_name || m.mid_static || m.store_id}
           </Link>
-          <span className="text-xs text-ink-2">{m.store_id}</span>
+          <span className="text-xs text-ink-2">{m.mid_static || m.store_id}</span>
         </div>
       );
     case "grading_usak":
@@ -343,7 +352,7 @@ function cell(m: MerchantListItem, key: string, today: string, configured: boole
   }
 }
 
-function MerchantTable({ items, today, sort, dir, onSort, configured, source }: {
+function MerchantTable({ items, today, sort, dir, onSort, configured, source, branch }: {
   items: MerchantListItem[];
   today: string;
   sort: string;
@@ -351,6 +360,7 @@ function MerchantTable({ items, today, sort, dir, onSort, configured, source }: 
   onSort: (field: string) => void;
   configured: boolean;
   source: string;
+  branch?: string;
 }) {
   // grading_usak hanya tampil bila menjadi kolom sumber USAK.
   const columns = COLUMNS.filter((c) => c.key !== "grading_usak" || source === "grading_usak");
@@ -392,7 +402,7 @@ function MerchantTable({ items, today, sort, dir, onSort, configured, source }: 
                     c.key === "merchant" && "group-hover:bg-surface-2 max-w-64",
                   )}
                 >
-                  {cell(m, c.key, today, configured, source)}
+                  {cell(m, c.key, today, configured, source, branch)}
                 </td>
               ))}
             </tr>
@@ -403,16 +413,16 @@ function MerchantTable({ items, today, sort, dir, onSort, configured, source }: 
   );
 }
 
-function MerchantCards({ items, today, configured, source }: { items: MerchantListItem[]; today: string; configured: boolean; source: string }) {
+function MerchantCards({ items, today, configured, source, branch }: { items: MerchantListItem[]; today: string; configured: boolean; source: string; branch?: string }) {
   return (
     <ul className="space-y-2 md:hidden">
       {items.map((m) => (
         <li key={m.store_id}>
-          <Link href={`/merchants/${encodeURIComponent(m.store_id)}`} className="block rounded-xl border border-line bg-surface p-3 active:bg-surface-2">
+          <Link href={detailHref(m.store_id, branch)} className="block rounded-xl border border-line bg-surface p-3 active:bg-surface-2">
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
-                <p className="truncate font-medium text-ink">{m.store_name || m.store_id}</p>
-                <p className="truncate text-xs text-ink-2">{m.store_id} · {m.owner_name || "—"}</p>
+                <p className="truncate font-medium text-ink">{m.store_name || m.mid_static || m.store_id}</p>
+                <p className="truncate text-xs text-ink-2">{m.mid_static || m.store_id} · {m.owner_name || "—"}</p>
               </div>
               <PriorityBadge priority={m.priority} />
             </div>

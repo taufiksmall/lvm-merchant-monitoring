@@ -5,6 +5,7 @@ Website untuk petugas cabang memantau performa merchant LVM dan menentukan merch
 - Petugas login dengan **kode cabang + kata sandi** yang dikelola administrator di Google Sheets.
 - Setelah login, petugas **hanya** melihat merchant dengan `kode_cabang_final` = cabangnya. Pembatasan ini dilakukan di backend (Apps Script), bukan di browser.
 - Dashboard: total merchant, merchant USAK (dari kolom acuan USAK, bawaan `grading_trx`), rasio USAK, gap menuju 50%, distribusi status, ringkasan MTD/YTD/30 hari, dan merchant prioritas.
+- Akun **area** dan **region** (hanya melihat): halaman Pemantauan berisi cabang di cakupannya diurut dari rasio USAK terendah, klik cabang untuk merchant yang perlu di-follow-up.
 - Daftar merchant dengan pencarian, filter, pengurutan, dan pagination di server; detail merchant; pencatatan follow-up & progres USAK.
 
 ## Arsitektur
@@ -68,7 +69,9 @@ Perintah lain:
 |---|---|
 | `npm test` | Uji backend Apps Script (auth, isolasi cabang, rumus USAK, follow-up, impor) |
 | `npm run lint` / `npm run typecheck` / `npm run build` | Pemeriksaan & build produksi |
-| `npm run hash-password` | Buat `password_hash` secara lokal (kata sandi tidak dikirim ke mana pun) |
+| `npm run hash-password` | Buat `password_hash` satu akun secara lokal (kata sandi tidak dikirim ke mana pun) |
+| `npm run passwords:bulk -- users.csv` | Buat kata sandi awal + hash untuk banyak akun cabang (lihat [docs/02-google-sheets.md](docs/02-google-sheets.md#akun-untuk-banyak-cabang-sekaligus)) |
+| `npm run gas:bundle` | Gabungkan kode Apps Script jadi satu file `Code.gs` untuk ditempel manual |
 | `npm run validate:csv -- file.csv` | Validasi CSV merchant sebelum diunggah |
 | `npm run sample-data` | Buat ulang data contoh |
 | `npm run gas:push` | Unggah `apps-script/src` ke Apps Script dengan clasp |

@@ -20,6 +20,7 @@ function publicUser_(ctx) {
     kode_cabang: ctx.kode_cabang,
     nama_cabang: ctx.nama_cabang,
     role: ctx.role,
+    akses: SCOPE_ROLES.indexOf(ctx.role) >= 0 ? ctx.role : 'cabang',
     permissions: ctx.permissions,
     expires_at: ctx.expires_at,
   };
@@ -200,6 +201,26 @@ function revokeSessionsForUser_(userId) {
       if (str_(r.user_id) === id && !str_(r.revoked_at)) {
         updateObjectFields_(SHEETS.SESSIONS, r._row, { revoked_at: stamp });
         cacheRemove_('s:' + str_(r.session_hash));
+        count++;
+      }
+    }
+  });
+  return count;
+}
+
+/** Cabut sesi beberapa user sekaligus (satu kali baca sheet Sessions). Mengembalikan jumlah sesi dicabut. */
+function revokeSessionsForUsers_(userIds) {
+  var wanted = {};
+  for (var i = 0; i < userIds.length; i++) wanted[str_(userIds[i])] = true;
+  var count = 0;
+  withLock_(function () {
+    var table = readTable_(SHEETS.SESSIONS);
+    var stamp = isoNow_();
+    for (var r = 0; r < table.rows.length; r++) {
+      var row = table.rows[r];
+      if (wanted[str_(row.user_id)] && !str_(row.revoked_at)) {
+        updateObjectFields_(SHEETS.SESSIONS, row._row, { revoked_at: stamp });
+        cacheRemove_('s:' + str_(row.session_hash));
         count++;
       }
     }

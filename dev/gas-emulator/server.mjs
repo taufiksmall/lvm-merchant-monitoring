@@ -33,7 +33,7 @@ const secret = env.APPS_SCRIPT_API_KEY || DEV_FALLBACK_SECRET;
 const port = Number(env.EMULATOR_PORT || 8787);
 const latency = Number(env.EMULATOR_LATENCY_MS || 0);
 
-const { rt, importLines } = createSeededRuntime({ secret, withUsakConfig: env.EMULATOR_NO_USAK_CONFIG !== '1' });
+const { rt, importLines } = createSeededRuntime({ secret, withUsakConfig: env.EMULATOR_NO_USAK_CONFIG !== '1', scopeDemo: true });
 
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://localhost');

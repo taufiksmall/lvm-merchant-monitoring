@@ -17,6 +17,8 @@ export type SessionUser = {
   kode_cabang: string;
   nama_cabang: string;
   role: string;
+  /** Jenis tampilan: cabang (bawaan), atau area/region untuk pemantauan banyak cabang. */
+  akses: "cabang" | "area" | "region";
   permissions: Permissions;
   expires_at: string;
 };
@@ -104,6 +106,7 @@ export type DashboardSummary = {
   metrics: Record<MetricKey, MetricSummary>;
   prioritas_teratas: {
     store_id: string;
+    mid_static: string;
     store_name: string;
     usak: UsakInfo;
     priority: PriorityInfo;
@@ -115,6 +118,8 @@ export type DashboardSummary = {
 
 export type MerchantListItem = {
   store_id: string;
+  /** ID merchant yang ditampilkan ke petugas. store_id tetap kunci unik internal. */
+  mid_static: string;
   store_name: string;
   owner_name: string;
   status_trx: string;
@@ -199,4 +204,29 @@ export type RevealResult = {
   store_id: string;
   group: "identity" | "financial";
   values: Record<string, string | number | null>;
+};
+
+export type RegionBranch = {
+  kode_cabang: string;
+  nama_cabang: string;
+  nama_area: string;
+  total_merchant: number;
+  merchant_usak: number;
+  perlu_dicek: number;
+  rasio_usak: number;
+  target_usak_50: number;
+  gap_usak_50: number;
+  tercapai: boolean;
+};
+
+export type RegionSummary = {
+  cakupan: { jenis: "area" | "region"; nama: string; areas: string[] };
+  usak: DashboardSummary["usak"];
+  cabang_total: number;
+  cabang_tercapai: number;
+  cabang_belum: number;
+  cabang: RegionBranch[];
+  area: { nama_area: string; cabang: number; total_merchant: number; merchant_usak: number; rasio_usak: number; gap_usak_50: number; tercapai: boolean }[];
+  warnings: Warning[];
+  data: { diperbarui: string; snapshot_date: string };
 };
