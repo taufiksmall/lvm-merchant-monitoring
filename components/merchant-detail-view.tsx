@@ -241,7 +241,7 @@ function FinancialCard({ data }: { data: MerchantDetail }) {
       <dl className="grid gap-3 text-sm sm:grid-cols-2">
         {FINANCIAL_COLUMNS.map((col) => (
           <div key={col}>
-            <dt className="font-mono text-xs text-ink-2">{col}</dt>
+            <dt className="text-xs text-ink-2" title={`Kolom ${col}`}>{COLUMN_LABELS[col]}</dt>
             <dd className="mt-0.5 text-ink">{fmtRupiah(data.financial[col] as number | null)}</dd>
           </div>
         ))}

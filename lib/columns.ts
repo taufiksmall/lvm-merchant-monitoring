@@ -52,12 +52,11 @@ export const COLUMN_LABELS: Record<MerchantColumn, string> = {
   companytype: "Tipe perusahaan",
   jenis_rekening: "Jenis rekening",
   cifno: "Nomor CIF",
-  // Definisi bisnis kolom saldo/nominal belum ditetapkan: tampilkan nama kolom sumber.
-  cbalrp: "cbalrp",
-  ybal: "ybal",
-  avgbalrp: "avgbalrp",
-  amtcrc: "amtcrc",
-  amtdrc: "amtdrc",
+  cbalrp: "Saldo Akhir",
+  ybal: "Saldo Kemarin",
+  avgbalrp: "Saldo Rata-Rata",
+  amtcrc: "Dana Masuk",
+  amtdrc: "Dana Keluar",
   Tiering: "Tiering",
 };
 
@@ -78,7 +77,8 @@ export const DETAIL_SECTIONS: { title: string; columns: MerchantColumn[] }[] = [
   { title: "Status", columns: ["status_trx", "grading_trx", "grading_usak", "status_rekening", "flag_card_dongle", "Tiering"] },
 ];
 
-export const FINANCIAL_COLUMNS: MerchantColumn[] = ["cbalrp", "ybal", "avgbalrp", "amtcrc", "amtdrc"];
+/** Urutan tampil: saldo dulu, lalu arus dana. */
+export const FINANCIAL_COLUMNS: MerchantColumn[] = ["cbalrp", "avgbalrp", "ybal", "amtcrc", "amtdrc"];
 
 /** Filter nilai kolom pada daftar merchant (urutan tampil). */
 export const FILTER_COLUMNS = [

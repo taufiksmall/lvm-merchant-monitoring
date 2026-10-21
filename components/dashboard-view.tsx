@@ -3,11 +3,11 @@
 import { ChevronRight } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { fmtCompact, fmtDate, fmtDateTime, fmtNumber, fmtPercent, fmtRupiah } from "@/lib/format";
+import { fmtDate, fmtDateTime, fmtNumber, fmtPercent } from "@/lib/format";
 import { useApi } from "@/lib/client/use-api";
-import type { CountItem, DashboardSummary, MetricKey } from "@/lib/types";
+import type { CountItem, DashboardSummary } from "@/lib/types";
 import { FollowUpCell, PriorityBadge, UsakBadge } from "./badges";
-import { Alert, Badge, Card, EmptyState, ErrorState, KpiStrip, PageHeader, ReloadButton, Skeleton, cx, tableCls } from "./ui";
+import { Alert, Badge, Card, EmptyState, ErrorState, KpiStrip, PageHeader, ReloadButton, Skeleton, cx } from "./ui";
 
 function listHref(params: Record<string, string | string[]>) {
   const sp = new URLSearchParams();
@@ -27,7 +27,7 @@ export function DashboardView() {
   return (
     <div className={cx("space-y-4 transition-opacity", loading && "opacity-60")} aria-busy={loading}>
       <PageHeader
-        title="Performance cabang"
+        title="Peningkatan rasio USAK"
         subtitle={
           <span>
             {data.cabang.nama_cabang || "Cabang"} · {data.cabang.kode_cabang}
@@ -58,33 +58,20 @@ export function DashboardView() {
         </Card>
       ) : (
         <>
+          <PriorityList data={data} />
           <div className="grid gap-4 lg:grid-cols-2">
             <FollowUpPanel data={data} />
-            <Card title="Status transaksi" subtitle="status_trx">
-              <BarList items={data.distribusi.status_trx} total={u.total_merchant} hrefFor={(v) => listHref({ status_trx: v })} />
+            <Card title={`Komposisi ${u.source_column}`} subtitle="Dasar perhitungan rasio USAK">
+              <BarList
+                items={data.distribusi.usak_source}
+                total={u.total_merchant}
+                hrefFor={(v) => listHref({ [u.source_column]: v })}
+                extra={(item) => item.kategori && (
+                  <UsakBadge configured={u.configured} usak={{ kategori: item.kategori, label: "", perlu_dicek: false, nilai: item.value, source_column: u.source_column }} />
+                )}
+              />
             </Card>
           </div>
-
-          <div className="grid gap-4 lg:grid-cols-5">
-            <div className="min-w-0 lg:col-span-3">
-              <CrossTab data={data} />
-            </div>
-            <div className="min-w-0 lg:col-span-2">
-              <Card title={`Grading (${u.source_column})`} subtitle="Kolom acuan USAK">
-                <BarList
-                  items={data.distribusi.usak_source}
-                  total={u.total_merchant}
-                  hrefFor={(v) => listHref({ [u.source_column]: v })}
-                  extra={(item) => item.kategori && (
-                    <UsakBadge configured={u.configured} usak={{ kategori: item.kategori, label: "", perlu_dicek: false, nilai: item.value, source_column: u.source_column }} />
-                  )}
-                />
-              </Card>
-            </div>
-          </div>
-
-          <MetricsTable data={data} />
-          <PriorityList data={data} />
         </>
       )}
     </div>
@@ -230,61 +217,6 @@ function BarList({ items, total, hrefFor, extra }: {
   );
 }
 
-/** Tabel silang grading_trx × Tiering dengan intensitas satu hue (terang -> gelap). */
-function CrossTab({ data }: { data: DashboardSummary }) {
-  const { rows, cols, cells } = data.grading_trx_x_tiering;
-  const max = Math.max(1, ...cells.flat());
-  const colTotals = cols.map((_, c) => cells.reduce((s, r) => s + r[c], 0));
-  return (
-    <Card title="Grading × Tiering" subtitle="Jumlah merchant per kombinasi; klik sel untuk melihat daftar">
-      <div className="-mx-4 overflow-x-auto px-4">
-        <table className="w-full min-w-[22rem] border-separate border-spacing-0.5 text-[13px]">
-          <thead>
-            <tr>
-              <th scope="col" className="px-2 py-1.5 text-left text-xs font-medium text-ink-2">grading_trx \ Tiering</th>
-              {cols.map((c) => (
-                <th key={c.value} scope="col" className="px-2 py-1.5 text-center text-xs font-medium text-ink-2">{c.label}</th>
-              ))}
-              <th scope="col" className="px-2 py-1.5 text-right text-xs font-medium text-ink-2">Total</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r, ri) => (
-              <tr key={r.value}>
-                <th scope="row" className="px-2 py-1.5 text-left font-medium text-ink">{r.label}</th>
-                {cols.map((c, ci) => {
-                  const n = cells[ri][ci];
-                  const strength = n === 0 ? 0 : 12 + Math.round((n / max) * 70);
-                  return (
-                    <td key={c.value} className="p-0">
-                      <Link
-                        href={listHref({ grading_trx: r.value, Tiering: c.value })}
-                        title={`grading_trx ${r.label}, ${c.label}: ${fmtNumber(n)} merchant`}
-                        className={cx("block rounded-sm px-2 py-1.5 text-center hover:outline hover:outline-2 hover:outline-ink/30", strength > 52 ? "text-white" : "text-ink")}
-                        style={{ background: n === 0 ? "var(--surface-2)" : `color-mix(in oklab, var(--accent) ${strength}%, var(--surface))` }}
-                      >
-                        {n === 0 ? <span className="text-muted">0</span> : fmtNumber(n)}
-                      </Link>
-                    </td>
-                  );
-                })}
-                <td className="px-2 py-1.5 text-right font-medium text-ink tabular">{fmtNumber(r.count)}</td>
-              </tr>
-            ))}
-            <tr>
-              <th scope="row" className="px-2 py-1.5 text-left text-xs font-medium text-ink-2">Total</th>
-              {colTotals.map((t, i) => (
-                <td key={cols[i].value} className="px-2 py-1.5 text-center font-medium text-ink tabular">{fmtNumber(t)}</td>
-              ))}
-              <td className="px-2 py-1.5 text-right font-semibold text-ink tabular">{fmtNumber(data.usak.total_merchant)}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </Card>
-  );
-}
-
 function FollowUpPanel({ data }: { data: DashboardSummary }) {
   const f = data.follow_up;
   const rows = [
@@ -298,7 +230,7 @@ function FollowUpPanel({ data }: { data: DashboardSummary }) {
     { label: "Follow-up dicatat bulan ini", value: f.dicatat_bulan_ini, href: listHref({ follow_up: "sudah_ada", sort: "last_follow_up" }), alert: false },
   ];
   return (
-    <Card title="Follow-up" subtitle="Menurut aturan prioritas dan status follow-up terakhir">
+    <Card title="Follow-up" subtitle="Merchant yang perlu ditindaklanjuti">
       <ul className="-my-1 divide-y divide-line">
         {rows.map(({ label, value, href, alert }) => (
           <li key={label}>
@@ -310,68 +242,6 @@ function FollowUpPanel({ data }: { data: DashboardSummary }) {
           </li>
         ))}
       </ul>
-      {f.by_status.length > 0 && (
-        <div className="mt-3 border-t border-line pt-3">
-          <p className="mb-1 text-xs font-medium text-ink-2">Status follow-up terakhir</p>
-          <BarList items={f.by_status} total={f.sudah_ada} hrefFor={(v) => listHref({ status_follow_up: v })} />
-        </div>
-      )}
-    </Card>
-  );
-}
-
-const METRIC_ROWS: { label: string; money: boolean; keys: (MetricKey | null)[] }[] = [
-  { label: "Transaksi", money: false, keys: ["freq_mtd", "freq_ytd", "freq_30_days"] },
-  { label: "Nilai transaksi (SV)", money: true, keys: ["sv_mtd", "sv_ytd", "sv_30_days"] },
-  { label: "FBI", money: true, keys: ["fbi_mtd", "fbi_ytd", null] },
-];
-
-function MetricsTable({ data }: { data: DashboardSummary }) {
-  return (
-    <Card
-      title="Ringkasan performa"
-      subtitle="Snapshot saat ini · rata-rata = total ÷ merchant yang memiliki nilai"
-      flush
-    >
-      <div className="overflow-x-auto">
-        <table className={cx(tableCls.table, "min-w-[36rem]")}>
-          <thead>
-            <tr className={tableCls.headRow}>
-              <th scope="col" className={tableCls.th}>Metrik</th>
-              <th scope="col" className={cx(tableCls.th, "text-right")}>MTD</th>
-              <th scope="col" className={cx(tableCls.th, "text-right")}>YTD</th>
-              <th scope="col" className={cx(tableCls.th, "text-right")}>30 hari terakhir</th>
-            </tr>
-          </thead>
-          <tbody>
-            {METRIC_ROWS.map((row) => (
-              <tr key={row.label} className="border-b border-line last:border-0">
-                <th scope="row" className={cx(tableCls.td, "py-2.5 text-left font-medium text-ink")}>{row.label}</th>
-                {row.keys.map((k) => {
-                  const m = k ? data.metrics[k] : null;
-                  return (
-                    <td key={k ?? "kosong"} className={cx(tableCls.td, "py-2.5 text-right align-top")}>
-                      {m ? (
-                        <>
-                          <div className="font-semibold text-ink" title={row.money ? fmtRupiah(m.sum) : fmtNumber(m.sum)}>
-                            {row.money ? fmtRupiah(m.sum, true) : fmtCompact(m.sum)}
-                          </div>
-                          <div className="text-xs text-ink-2">
-                            rata-rata {row.money ? fmtRupiah(m.avg, true) : fmtNumber(m.avg, 1)}
-                            {m.count < data.usak.total_merchant && <> · {fmtNumber(m.count)} data</>}
-                          </div>
-                        </>
-                      ) : (
-                        <span className="text-xs text-muted">Tidak tersedia</span>
-                      )}
-                    </td>
-                  );
-                })}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
     </Card>
   );
 }
