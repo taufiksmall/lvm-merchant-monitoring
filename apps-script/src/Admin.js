@@ -736,6 +736,9 @@ function buildBranchIndex_() {
   var namas = colValues('nama_cabang_final');
   var areas = colValues('nama_area_final');
   var grades = colValues(cfg.usak.source);
+  var tiers = colValues('Tiering');
+  // Metrik performa & dana per cabang (jumlah dan banyak data), untuk tampilan area/region.
+  var metricCols = PERFORMANCE_METRICS.map(function (name) { return { name: name, values: colValues(name) }; });
   var kategoriMemo = {};
   var runs = {}, order = [], prev = null, summary = {};
   for (var i = 0; i < kodes.length; i++) {
@@ -750,7 +753,21 @@ function buildBranchIndex_() {
       runs[k][runs[k].length - 1].end = row;
     }
     var sm = summary[k];
-    if (!sm) sm = summary[k] = { nama: '', area: '', usak: 0, belum: 0, dicek: 0 };
+    if (!sm) sm = summary[k] = { nama: '', area: '', usak: 0, belum: 0, dicek: 0, sums: {}, counts: {}, grades: {}, cross: {} };
+    for (var mc = 0; mc < metricCols.length; mc++) {
+      if (!metricCols[mc].values) continue;
+      var nv = toNumber_(metricCols[mc].values[i][0]);
+      if (nv !== null) {
+        var mn = metricCols[mc].name;
+        sm.sums[mn] = (sm.sums[mn] || 0) + nv;
+        sm.counts[mn] = (sm.counts[mn] || 0) + 1;
+      }
+    }
+    var gv = grades ? str_(grades[i][0]) : '';
+    sm.grades[gv] = (sm.grades[gv] || 0) + 1;
+    var tv = tiers ? str_(tiers[i][0]) : '';
+    var gx = sm.cross[gv] || (sm.cross[gv] = {});
+    gx[tv] = (gx[tv] || 0) + 1;
     if (!sm.nama && namas) sm.nama = str_(namas[i][0]);
     if (!sm.area && areas) sm.area = str_(areas[i][0]);
     var raw = grades ? grades[i][0] : '';
@@ -767,7 +784,7 @@ function buildBranchIndex_() {
     var rs = runs[order[i]];
     if (rs.length !== 1) { split.push(order[i] + ' (' + rs.length + ' blok)'); continue; }
     var smy = summary[order[i]];
-    out.push([order[i], rs[0].start, rs[0].end, rs[0].end - rs[0].start + 1, stamp, smy.nama, smy.area, smy.usak, smy.belum, smy.dicek]);
+    out.push([order[i], rs[0].start, rs[0].end, rs[0].end - rs[0].start + 1, stamp, smy.nama, smy.area, smy.usak, smy.belum, smy.dicek, JSON.stringify({ s: smy.sums, c: smy.counts, g: smy.grades, x: smy.cross })]);
     total += rs[0].end - rs[0].start + 1;
   }
   var idxSheet = getSheet_(SHEETS.BRANCH_INDEX, true) || getSpreadsheet_().insertSheet(SHEETS.BRANCH_INDEX);
@@ -779,7 +796,7 @@ function buildBranchIndex_() {
     ensureRowCapacity_(idxSheet, out.length + 1);
     var canonical = SHEET_SCHEMAS.BranchIndex;
     writeRowsByHeader_(idxSheet, canonical, out.map(function (r) {
-      return [forceTextCell_(String(r[0])), r[1], r[2], r[3], r[4], sanitizeCell_(String(r[5])), sanitizeCell_(String(r[6])), r[7], r[8], r[9]];
+      return [forceTextCell_(String(r[0])), r[1], r[2], r[3], r[4], sanitizeCell_(String(r[5])), sanitizeCell_(String(r[6])), r[7], r[8], r[9], String(r[10])];
     }));
   }
   bumpVersion_('DATA_VERSION');

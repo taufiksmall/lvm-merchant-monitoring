@@ -28,6 +28,18 @@ function loadWilayah_() {
 }
 
 /** Ringkasan semua cabang yang diindeks (snapshot saat Bangun indeks cabang dijalankan). */
+/** Ringkasan metrik per cabang dari BranchIndex ({s: jumlah, c: banyak data, g: sebaran nilai grading}); null bila belum ada. */
+function parseRingkasan_(v) {
+  var s = str_(v);
+  if (!s || s.charAt(0) !== '{') return null;
+  try {
+    var o = JSON.parse(s);
+    return o && o.s && o.c && o.g ? o : null;
+  } catch (e) {
+    return null;
+  }
+}
+
 function loadBranchSummaries_(cfg) {
   var key = 'bs:' + getVersion_('DATA_VERSION');
   var cached = cacheGetJson_(key);
@@ -48,6 +60,7 @@ function loadBranchSummaries_(cfg) {
       belum: toNumber_(r.jumlah_belum_usak) || 0,
       perlu_dicek: toNumber_(r.jumlah_perlu_dicek) || 0,
       diperbarui: toIsoTimestamp_(r.diperbarui),
+      ringkasan: parseRingkasan_(r.ringkasan),
     });
   }
   cachePutJson_(key, rows, 600);
@@ -137,7 +150,50 @@ function regionSummary_(ctx) {
   var stamp = '';
   scope.branches.forEach(function (b) { if (b.diperbarui > stamp) stamp = b.diperbarui; });
 
+  // Metrik performa/dana dan komposisi grading gabungan seluruh cabang di cakupan.
+  var metrics = {}, gradeCount = {}, withSummary = 0;
+  PERFORMANCE_METRICS.forEach(function (m) { metrics[m] = { sum: 0, count: 0, avg: null }; });
+  scope.branches.forEach(function (b) {
+    if (!b.ringkasan) return;
+    withSummary++;
+    PERFORMANCE_METRICS.forEach(function (m) {
+      metrics[m].sum += b.ringkasan.s[m] || 0;
+      metrics[m].count += b.ringkasan.c[m] || 0;
+    });
+    for (var gk in b.ringkasan.g) gradeCount[gk] = (gradeCount[gk] || 0) + b.ringkasan.g[gk];
+  });
+  PERFORMANCE_METRICS.forEach(function (m) { metrics[m].avg = metrics[m].count ? metrics[m].sum / metrics[m].count : null; });
+  // Tabel silang grading x Tiering gabungan (nilai digabung tanpa beda huruf besar/kecil).
+  var xGrades = {}, xTiers = {}, xCells = {};
+  scope.branches.forEach(function (b) {
+    if (!b.ringkasan || !b.ringkasan.x) return;
+    for (var gk in b.ringkasan.x) {
+      var gKey = normKey_(gk);
+      if (!xGrades[gKey]) xGrades[gKey] = { value: gk === '' ? BLANK_FILTER_VALUE : gk, label: gk === '' ? '(kosong)' : gk, count: 0 };
+      for (var tk in b.ringkasan.x[gk]) {
+        var tKey = normKey_(tk), n = b.ringkasan.x[gk][tk];
+        if (!xTiers[tKey]) xTiers[tKey] = { value: tk === '' ? BLANK_FILTER_VALUE : tk, label: tk === '' ? '(kosong)' : tk, count: 0 };
+        xGrades[gKey].count += n; xTiers[tKey].count += n;
+        xCells[gKey + '|' + tKey] = (xCells[gKey + '|' + tKey] || 0) + n;
+      }
+    }
+  });
+  var xRows = toSortedList_(xGrades, false), xCols = toSortedList_(xTiers, false);
+  var crossTab = {
+    rows: xRows, cols: xCols,
+    cells: xRows.map(function (g) {
+      return xCols.map(function (t) { return xCells[normKey_(g.value === BLANK_FILTER_VALUE ? '' : g.value) + '|' + normKey_(t.value === BLANK_FILTER_VALUE ? '' : t.value)] || 0; });
+    }),
+  };
+  var usakSource = Object.keys(gradeCount).map(function (gk) {
+    return { value: gk === '' ? BLANK_FILTER_VALUE : gk, label: gk === '' ? '(kosong)' : gk, count: gradeCount[gk], kategori: classifyUsak_(gk, cfg.usak) };
+  }).sort(function (a, b) { return b.count - a.count; });
+  agg.source_column = cfg.usak.source;
+
   var warnings = configWarnings_(cfg);
+  if (scope.branches.length && withSummary < scope.branches.length) {
+    warnings.push({ code: 'SUMMARY_STALE', message: 'Ringkasan performa belum lengkap untuk ' + (scope.branches.length - withSummary) + ' cabang. Admin perlu menjalankan "Bangun indeks cabang".' });
+  }
   if (!scope.branches.length) {
     warnings.push({ code: 'NO_BRANCHES', message: 'Belum ada cabang di cakupan Anda. Admin perlu menjalankan "Bangun indeks cabang" dan memeriksa sheet Wilayah.' });
   }
@@ -149,6 +205,9 @@ function regionSummary_(ctx) {
     cabang_belum: rows.filter(function (r) { return !r.tercapai; }).length,
     cabang: rows,
     area: areas,
+    metrics: withSummary ? metrics : null,
+    distribusi: { usak_source: usakSource },
+    grading_trx_x_tiering: crossTab,
     warnings: warnings,
     data: { diperbarui: stamp, snapshot_date: cfg.settings.DATA_SNAPSHOT_DATE || '' },
   };

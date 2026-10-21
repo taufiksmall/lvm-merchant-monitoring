@@ -57,7 +57,7 @@ export function LoginForm({ next, notice, noticeTone }: { next: string; notice?:
 
   const inputCls = "h-10 w-full rounded-md border bg-surface px-3 text-sm text-ink placeholder:text-muted";
   return (
-    <form onSubmit={onSubmit} noValidate className="space-y-4 rounded-md border border-line bg-surface p-5 sm:p-6">
+    <form method="post" onSubmit={onSubmit} noValidate className="space-y-4 rounded-md border border-line bg-surface p-5 sm:p-6">
       {notice && !errors.form && <Alert tone={noticeTone}>{notice}</Alert>}
       {errors.form && <Alert tone="error">{errors.form}</Alert>}
 

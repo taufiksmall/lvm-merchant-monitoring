@@ -68,7 +68,12 @@ export type MetricKey =
   | "sv_ytd"
   | "fbi_ytd"
   | "freq_30_days"
-  | "sv_30_days";
+  | "sv_30_days"
+  | "cbalrp"
+  | "avgbalrp"
+  | "ybal"
+  | "amtcrc"
+  | "amtdrc";
 
 export type DashboardSummary = {
   cabang: { kode_cabang: string; nama_cabang: string };
@@ -225,6 +230,10 @@ export type RegionSummary = {
   cabang_tercapai: number;
   cabang_belum: number;
   cabang: RegionBranch[];
+  metrics: Record<MetricKey, MetricSummary> | null;
+  /** Kosong bila Apps Script belum memakai versi terbaru. */
+  distribusi?: { usak_source: CountItem[] };
+  grading_trx_x_tiering?: { rows: CountItem[]; cols: CountItem[]; cells: number[][] };
   area: { nama_area: string; kode_area?: string; cabang: number; total_merchant: number; merchant_usak: number; rasio_usak: number; gap_usak_50: number; tercapai: boolean }[];
   warnings: Warning[];
   data: { diperbarui: string; snapshot_date: string };

@@ -7,6 +7,7 @@ import { fmtDateTime, fmtNumber, fmtPercent } from "@/lib/format";
 import { useApi } from "@/lib/client/use-api";
 import type { RegionBranch, RegionSearch, RegionSummary } from "@/lib/types";
 import { UsakBadge } from "./badges";
+import { CrossTab, FundsTable, GradingCard, MetricsTable } from "./dashboard-view";
 import { Alert, Badge, Card, EmptyState, ErrorState, KpiStrip, PageHeader, ReloadButton, Skeleton, cx, fieldCls, labelCls, tableCls } from "./ui";
 
 export function branchHref(kode: string) {
@@ -54,17 +55,11 @@ export function RegionView() {
       : byKode(a, b));
   }, [data, minR, maxR, q, area, order]);
 
-  // Area diurutkan menurut kode cabang terendah di dalamnya (mis. Manado, Palu, Makassar, … Maluku).
-  const areas = useMemo(() => {
-    if (!data) return [];
-    const first = new Map<string, string>();
-    for (const b of data.cabang) {
-      const cur = first.get(b.nama_area);
-      if (cur === undefined || b.kode_cabang.localeCompare(cur, undefined, { numeric: true }) < 0) first.set(b.nama_area, b.kode_cabang);
-    }
-    const key = (name: string) => first.get(name) ?? "\uffff";
-    return [...data.area].sort((a, b) => key(a.nama_area).localeCompare(key(b.nama_area), undefined, { numeric: true }) || a.nama_area.localeCompare(b.nama_area));
-  }, [data]);
+  // Area diurutkan dari rasio USAK terendah ke tertinggi (selisih sama: nama area).
+  const areas = useMemo(
+    () => (data ? [...data.area].sort((a, b) => a.rasio_usak - b.rasio_usak || a.nama_area.localeCompare(b.nama_area)) : []),
+    [data],
+  );
 
   if (!data && error) return <ErrorState message={error.message} onRetry={reload} />;
   if (!data) {
@@ -114,10 +109,17 @@ export function RegionView() {
         ]}
       />
 
+      {data.metrics && (
+        <>
+          <MetricsTable metrics={data.metrics} total={u.total_merchant} title={`Performance ${jenis.toLowerCase()}`} />
+          <FundsTable metrics={data.metrics} title={`Dana ${jenis.toLowerCase()}`} />
+        </>
+      )}
+
       <MerchantSearch />
 
       {areas.length > 1 && (
-        <Card title="Per area" subtitle="Rasio USAK gabungan · klik nama area untuk memfilter tabel cabang">
+        <Card title="Per area" subtitle="Urut dari rasio terendah · klik nama area untuk memfilter tabel cabang">
           <ul className="-my-1">
             {areas.map((a) => (
               <li key={a.nama_area} className="grid grid-cols-[minmax(0,1fr)_4rem] items-center gap-x-3 gap-y-1 py-1.5 text-[13px] sm:grid-cols-[minmax(0,1fr)_minmax(6rem,14rem)_4rem]">
@@ -136,6 +138,19 @@ export function RegionView() {
             ))}
           </ul>
         </Card>
+      )}
+
+      {(data.distribusi?.usak_source.length ?? 0) > 0 && u.source_column && (
+        <div className="grid gap-4 lg:grid-cols-5">
+          <div className="min-w-0 lg:col-span-3">
+            {data.grading_trx_x_tiering && data.grading_trx_x_tiering.rows.length > 0 && (
+              <CrossTab cross={data.grading_trx_x_tiering} total={u.total_merchant} />
+            )}
+          </div>
+          <div className="min-w-0 lg:col-span-2">
+            <GradingCard items={data.distribusi!.usak_source} total={u.total_merchant} sourceColumn={u.source_column} configured={u.configured} />
+          </div>
+        </div>
       )}
 
       <Card title="Cabang menurut rasio USAK" subtitle={`Urut ${order === "kode" ? "kode cabang" : order === "rasio" ? "rasio terendah" : "gap terbesar"} · klik cabang untuk melihat merchant yang perlu di-follow-up`} flush>

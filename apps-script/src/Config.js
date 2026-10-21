@@ -91,6 +91,8 @@ var MERCHANT_DATE_COLUMNS = ['createddate'];
 /** Metrik performa yang diringkas di dashboard (snapshot, bukan tren). */
 var PERFORMANCE_METRICS = [
   'freq_mtd', 'sv_mtd', 'fbi_mtd', 'freq_ytd', 'sv_ytd', 'fbi_ytd', 'freq_30_days', 'sv_30_days',
+  // Dana (saldo & arus dana), dijumlahkan seperti metrik lain.
+  'cbalrp', 'avgbalrp', 'ybal', 'amtcrc', 'amtdrc',
 ];
 
 /** Data identitas sensitif: selalu disamarkan; nilai asli hanya lewat aksi reveal + audit. */
@@ -176,7 +178,7 @@ var SHEET_SCHEMAS = {
   // Lima kolom pertama = indeks baris; sisanya = ringkasan cabang (snapshot saat indeks dibangun) untuk pemantauan region/area.
   BranchIndex: [
     'kode_cabang', 'baris_awal', 'baris_akhir', 'jumlah', 'diperbarui',
-    'nama_cabang', 'nama_area', 'jumlah_usak', 'jumlah_belum_usak', 'jumlah_perlu_dicek',
+    'nama_cabang', 'nama_area', 'jumlah_usak', 'jumlah_belum_usak', 'jumlah_perlu_dicek', 'ringkasan',
   ],
   // Pemetaan area -> region; kode_area/kode_region dipakai sebagai kode login akun area/region.
   Wilayah: ['nama_area_final', 'kode_area', 'nama_region', 'kode_region', 'jumlah_cabang', 'jumlah_merchant'],

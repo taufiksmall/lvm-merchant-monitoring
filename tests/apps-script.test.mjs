@@ -1074,3 +1074,42 @@ describe('kecepatan login', () => {
     assert.equal(count(), 1);
   });
 });
+
+describe('ringkasan performa area/region', () => {
+  test('region.summary memuat metrik, dana, dan komposisi grading gabungan cabang', () => {
+    const ctx = setup();
+    const { rt, call } = ctx;
+    rt.run('prepareWilayahSheet_');
+    const w = rt.spreadsheet.getSheetByName('Wilayah');
+    const header = w.getRange(1, 1, 1, w.getLastColumn()).getValues()[0];
+    for (let r = 2; r <= w.getLastRow(); r++) {
+      w._setRaw(r, header.indexOf('nama_region') + 1, 'Region Jabar');
+      w._setRaw(r, header.indexOf('kode_region') + 1, 'REG-JABAR');
+    }
+    rt.run('createRegionAreaAccounts_');
+    const users = rt.spreadsheet.getSheetByName('Users');
+    const uh = users.getRange(1, 1, 1, users.getLastColumn()).getValues()[0];
+    for (let r = 2; r <= users.getLastRow(); r++) {
+      if (users.getRange(r, uh.indexOf('user_id') + 1).getValue() === 'REG-JABAR') {
+        users._setRaw(r, uh.indexOf('password_hash') + 1, rt.context.hashPassword_('PolaUji-12345', 20000));
+        users._setRaw(r, uh.indexOf('is_active') + 1, true);
+      }
+    }
+    const token = call('auth.login', { kode_cabang: 'REG-JABAR', password: 'PolaUji-12345' }).data.token;
+    const r = call('region.summary', {}, token);
+    assert.equal(r.ok, true, JSON.stringify(r.error));
+    const all = sheetRows(rt, 'Merchants');
+    const sum = (k) => all.reduce((s, m) => s + (Number(m[k]) || 0), 0);
+    assert.equal(r.data.metrics.sv_mtd.sum, sum('sv_mtd'));
+    assert.equal(r.data.metrics.freq_mtd.count, all.length);
+    assert.equal(r.data.metrics.cbalrp.sum, sum('cbalrp'));
+    const grading = r.data.distribusi.usak_source;
+    assert.equal(grading.reduce((s, g) => s + g.count, 0), all.length);
+    assert.ok(grading.every((g) => g.kategori));
+    assert.equal(r.data.usak.source_column, 'grading_trx');
+    const ct = r.data.grading_trx_x_tiering;
+    assert.equal(ct.cells.flat().reduce((s, n) => s + n, 0), all.length);
+    assert.ok(ct.rows.length > 0 && ct.cols.length > 0);
+    assert.equal(ct.rows.reduce((s, g) => s + g.count, 0), all.length);
+  });
+});
