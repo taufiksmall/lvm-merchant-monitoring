@@ -16,6 +16,8 @@ const eslintConfig = defineConfig([
     "scripts/**",
     "tests/**",
     "sample-data/**",
+    // Skill/agen lokal (bukan kode aplikasi).
+    ".agents/**",
     // File metadata macOS di drive exFAT.
     "**/._*",
   ]),

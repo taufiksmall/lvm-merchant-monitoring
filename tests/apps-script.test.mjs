@@ -95,6 +95,32 @@ describe('autentikasi', () => {
     assert.equal(locked.error.code, 'RATE_LIMITED');
   });
 
+  test('penguncian per kode+alamat: penyerang dari alamat lain tidak dapat mengunci pemilik akun', () => {
+    const { call } = setup();
+    const login = (password, ip) => call('auth.login', { kode_cabang: '0102', password, client_ip: ip });
+    for (let i = 0; i < 5; i++) assert.equal(login('salah-' + i, '203.0.113.9').error.code, 'INVALID_CREDENTIALS');
+    assert.equal(login('salah-x', '203.0.113.9').error.code, 'RATE_LIMITED'); // penyerang dikunci
+    assert.equal(login(PW.petugas0102, '198.51.100.7').ok, true); // pemilik dari alamat lain tetap bisa masuk
+  });
+
+  test('batas per alamat berlaku lintas kode (LOGIN_IP_MAX_ATTEMPTS bawaan 30)', () => {
+    const { call } = setup();
+    let locked = 0;
+    for (let i = 0; i < 40; i++) {
+      const r = call('auth.login', { kode_cabang: 'X' + i, password: 'salah', client_ip: '203.0.113.50' });
+      if (r.error.code === 'RATE_LIMITED') locked++;
+    }
+    assert.equal(locked, 10); // 30 gagal lolos, 10 sisanya ditolak tanpa hashing
+    assert.equal(call('auth.login', { kode_cabang: '0102', password: PW.petugas0102, client_ip: '203.0.113.50' }).error.code, 'RATE_LIMITED');
+    assert.equal(call('auth.login', { kode_cabang: '0102', password: PW.petugas0102, client_ip: '203.0.113.51' }).ok, true);
+  });
+
+  test('alamat klien tidak valid diabaikan (jatuh ke penguncian per kode)', () => {
+    const { call } = setup();
+    for (let i = 0; i < 5; i++) call('auth.login', { kode_cabang: '0102', password: 'salah-' + i, client_ip: "1.2.3.4'; DROP" });
+    assert.equal(call('auth.login', { kode_cabang: '0102', password: PW.petugas0102, client_ip: '' }).error.code, 'RATE_LIMITED');
+  });
+
   test('akun nonaktif tidak dapat login', () => {
     const { call } = setup();
     assert.equal(call('auth.login', { kode_cabang: '0301', password: PW.nonaktif0301 }).error.code, 'ACCOUNT_INACTIVE');

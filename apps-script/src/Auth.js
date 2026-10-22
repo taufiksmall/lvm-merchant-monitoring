@@ -61,6 +61,12 @@ function loadLoginCandidates_(kode, pad) {
   return list;
 }
 
+/** Alamat klien dari BFF: hanya karakter alamat IP; selain itu dianggap tidak ada. */
+function normalizeClientIp_(v) {
+  var s = str_(v).toLowerCase();
+  return /^[0-9a-f:.]{3,45}$/.test(s) ? s : '';
+}
+
 function login_(payload) {
   var input = validateLoginInput_(payload);
   var cfg = loadConfig_();
@@ -69,9 +75,16 @@ function login_(payload) {
   var maxAttempts = settingInt_(cfg, 'LOGIN_MAX_ATTEMPTS', 3, 20);
   var lockMinutes = settingInt_(cfg, 'LOGIN_LOCK_MINUTES', 1, 1440);
   var cache = scriptCache_();
-  var failKey = 'lf:' + sha256Hex_(kode).substring(0, 32);
+  // Penguncian per (kode, alamat klien): pihak lain tidak dapat mengunci pemilik akun dari alamat berbeda.
+  // Batas terpisah per alamat (semua kode) membatasi tebakan dan kerja hash dari satu klien. Alamat klien
+  // diteruskan server Next.js (BFF); tanpa alamat, jatuh ke penguncian per kode saja.
+  var ip = normalizeClientIp_(payload.client_ip);
+  var ipMax = settingInt_(cfg, 'LOGIN_IP_MAX_ATTEMPTS', 10, 200);
+  var failKey = 'lf:' + sha256Hex_(kode + '|' + ip).substring(0, 32);
+  var ipKey = ip ? 'li:' + sha256Hex_(ip).substring(0, 32) : '';
   var fails = Number(cache.get(failKey) || 0);
-  if (fails >= maxAttempts) {
+  var ipFails = ipKey ? Number(cache.get(ipKey) || 0) : 0;
+  if (fails >= maxAttempts || (ipKey && ipFails >= ipMax)) {
     throw new AppError('RATE_LIMITED', 'Terlalu banyak percobaan login gagal. Coba lagi dalam ' + lockMinutes + ' menit.');
   }
 
@@ -92,6 +105,7 @@ function login_(payload) {
   if (!matched) {
     fails++;
     cache.put(failKey, String(fails), lockMinutes * 60);
+    if (ipKey) cache.put(ipKey, String(ipFails + 1), lockMinutes * 60);
     if (fails >= maxAttempts) {
       audit_({ user_id: '', kode_cabang: kode }, 'LOGIN_LOCKED', '', 'Batas percobaan login gagal tercapai.');
     }

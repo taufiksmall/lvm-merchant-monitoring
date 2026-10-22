@@ -8,3 +8,13 @@ docs
 
 # Jangan unggah file lingkungan lokal ke Vercel (variabel diatur di Project Settings)
 .env*
+
+# Berkas kata sandi/hash teks biasa dari npm run passwords:bulk: JANGAN pernah ikut terunggah
+akun-awal/
+akun-pola/
+akun-area-region/
+akun*/
+
+# Input agen/skill lokal, bukan bagian aplikasi
+.agents
+skills-lock.json

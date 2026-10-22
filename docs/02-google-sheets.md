@@ -188,7 +188,8 @@ Lihat [04-konfigurasi-usak.md](04-konfigurasi-usak.md).
 | SESSION_TTL_HOURS | 8 | Masa berlaku sesi (1–24 jam) |
 | CACHE_TTL_SECONDS | 600 | Cache data merchant per cabang |
 | PRIORITY_MIN_SCORE | 1 | Skor minimal "perlu follow-up" |
-| LOGIN_MAX_ATTEMPTS | 5 | Batas gagal login per kode cabang |
+| LOGIN_MAX_ATTEMPTS | 5 | Batas gagal login per kombinasi kode cabang + alamat klien |
+| LOGIN_IP_MAX_ATTEMPTS | 30 | Batas gagal login dari satu alamat klien (semua kode) |
 | LOGIN_LOCK_MINUTES | 15 | Lama kunci login |
 | USAK_SOURCE_COLUMN | grading_trx | Kolom Merchants yang menentukan status USAK: `grading_trx` atau `grading_usak` |
 | DEFAULT_PAGE_SIZE / MAX_PAGE_SIZE | 25 / 100 | Pagination |

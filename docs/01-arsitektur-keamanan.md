@@ -25,7 +25,7 @@ Tidak ada aksi yang menerima nama sheet/range dari klien. Daftar aksi tetap ada 
 | Validasi tiap request | Cek format token → cache 5 menit (CacheService) → bila tidak ada di cache: baca `Sessions`, cek `revoked_at`/`expires_at`, baca `Users` (harus `is_active`), cocokkan sidik jari `password_hash`. |
 | Logout | `auth.logout` mengisi `revoked_at` dan menghapus cache; cookie dihapus. |
 | Penonaktifan akun / ganti kata sandi | Berlaku paling lambat 5 menit (umur cache sesi). Untuk seketika: menu **LVM Admin › Cabut sesi satu pengguna**. Mengganti kata sandi lewat menu admin otomatis mencabut sesi lama. |
-| Brute force | Maks. `LOGIN_MAX_ATTEMPTS` (5) gagal per kode cabang → dikunci `LOGIN_LOCK_MINUTES` (15). Pesan gagal sama untuk kode tidak dikenal dan kata sandi salah; kode cabang tidak dikenal tetap menjalankan PBKDF2 agar waktu respons serupa. |
+| Brute force | Maks. `LOGIN_MAX_ATTEMPTS` (5) gagal per kombinasi kode cabang + alamat klien (dan `LOGIN_IP_MAX_ATTEMPTS` (30) per alamat klien) → dikunci `LOGIN_LOCK_MINUTES` (15). Pesan gagal sama untuk kode tidak dikenal dan kata sandi salah; kode cabang tidak dikenal tetap menjalankan PBKDF2 agar waktu respons serupa. |
 | Hash kata sandi | PBKDF2-HMAC-SHA256, 100.000 iterasi, salt 16 byte. Format `pbkdf2_sha256$<iterasi>$<salt>$<hash>` (diuji kompatibel dengan `crypto.pbkdf2` Node). |
 | CSRF | Cookie `SameSite=Lax` + route yang mengubah data menolak request tanpa `Origin`/`Sec-Fetch-Site` same-origin atau tanpa body JSON. |
 
