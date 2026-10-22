@@ -125,6 +125,8 @@ Di halaman Pemantauan akun area/region juga bisa:
 - **Filter Area** (akun region): dropdown **Area** menyaring tabel cabang ke satu area; klik nama area pada kartu "Per area" untuk memfilter, klik lagi untuk melepas. Digabung dengan filter rasio dan pencarian cabang.
 - **Filter rasio USAK** dengan rentang yang ditentukan sendiri (dari ≥ X% sampai < Y%) atau pilihan cepat (`< 25%`, `25% – <50%`, `< 50%`, `≥ 50%`), digabung dengan pencarian nama/kode cabang.
 
+Tabel Performance, Dana, dan Grading × Tiering pada Pemantauan memakai kolom `ringkasan` di BranchIndex. Isinya dihitung oleh menu **Bangun ringkasan performa cabang**, yang berjalan bertahap (berhenti sebelum batas waktu Apps Script; jalankan lagi sampai "Sisa: 0"). Setiap **Bangun indeks cabang**, **Urutkan Merchants per cabang**, atau impor mengosongkan ringkasan, jadi jalankan menu ringkasan sesudahnya.
+
 Angka pada halaman Pemantauan adalah **snapshot** saat **Bangun indeks cabang** dijalankan (total, USAK, belum USAK, perlu dicek per cabang). Jalankan ulang setelah data merchant atau definisi USAK berubah. Cabang yang barisnya terpecah (belum terurut) tidak muncul sampai **Urutkan Merchants per cabang** dijalankan.
 
 > Kata sandi berpola yang bisa diturunkan dari kode (mis. `MdnaAREA-PALU#`) lebih berisiko untuk akun area/region karena mencakup banyak cabang. Pertimbangkan `--length`/acak untuk akun-akun ini.

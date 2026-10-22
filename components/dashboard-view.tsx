@@ -22,7 +22,7 @@ export function DashboardView() {
   if (!data) return <DashboardSkeleton />;
 
   const u = data.usak;
-  const snapshot = data.data.snapshot_date ? `Data per ${fmtDate(data.data.snapshot_date)}` : data.data.last_import_at ? `Data diimpor ${fmtDateTime(data.data.last_import_at)}` : null;
+  const snapshot = data.data.snapshot_date ? `Posisi data LVM: ${fmtDate(data.data.snapshot_date)}` : data.data.last_import_at ? `Data diimpor ${fmtDateTime(data.data.last_import_at)}` : null;
 
   return (
     <div className={cx("space-y-4 transition-opacity", loading && "opacity-60")} aria-busy={loading}>
@@ -31,8 +31,7 @@ export function DashboardView() {
         subtitle={
           <span>
             {data.cabang.nama_cabang || "Cabang"} · {data.cabang.kode_cabang}
-            {snapshot && <> · {snapshot}</>}
-            <span className="text-muted"> · diperbarui {fmtDateTime(data.data.loaded_at)}</span>
+            {snapshot && <> · <strong className="font-semibold text-ink">{snapshot}</strong></>}
           </span>
         }
         action={<ReloadButton onClick={reload} loading={loading} />}

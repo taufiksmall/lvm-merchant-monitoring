@@ -1,11 +1,12 @@
 "use client";
 
-import { ArrowDown, ArrowUp, ArrowUpDown, ChevronLeft, ChevronRight, Search, SlidersHorizontal, X } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, ChevronLeft, ChevronRight, Download, Search, SlidersHorizontal, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { COLUMN_LABELS, FILTER_COLUMNS, SORT_OPTIONS } from "@/lib/columns";
 import { fmtCompact, fmtNumber, fmtRupiah } from "@/lib/format";
+import { downloadMerchantsXlsx } from "@/lib/client/export-xlsx";
 import { useApi } from "@/lib/client/use-api";
 import type { FilterOptions, MerchantList, MerchantListItem, Option } from "@/lib/types";
 import { FollowUpCell, PriorityBadge, UsakBadge } from "./badges";
@@ -80,6 +81,39 @@ export function MerchantListView({ branch }: { branch?: string } = {}) {
     router.replace(sp.toString() ? `${pathname}?${sp.toString()}` : pathname, { scroll: false });
   }
 
+  // Merchant terpilih disimpan utuh (lintas halaman) agar bisa diunduh sebagai Excel.
+  const [selected, setSelected] = useState<Map<string, MerchantListItem>>(new Map());
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const toggle = (m: MerchantListItem) =>
+    setSelected((prev) => {
+      const next = new Map(prev);
+      if (next.has(m.store_id)) next.delete(m.store_id);
+      else next.set(m.store_id, m);
+      return next;
+    });
+  const setMany = (items: MerchantListItem[], on: boolean) =>
+    setSelected((prev) => {
+      const next = new Map(prev);
+      for (const m of items) {
+        if (on) next.set(m.store_id, m);
+        else next.delete(m.store_id);
+      }
+      return next;
+    });
+  async function exportSelected() {
+    if (!list.data || selected.size === 0) return;
+    setExporting(true);
+    setExportError(null);
+    try {
+      await downloadMerchantsXlsx([...selected.values()], { today: list.data.today, sourceColumn: list.data.usak_source, branch });
+    } catch {
+      setExportError("Gagal membuat berkas Excel. Coba lagi.");
+    } finally {
+      setExporting(false);
+    }
+  }
+
   const data = list.data;
   const searchHint = data?.search_fields.includes("account_number")
     ? "Cari nama merchant, MID, pemilik, atau no. rekening"
@@ -112,6 +146,17 @@ export function MerchantListView({ branch }: { branch?: string } = {}) {
 
       {list.error && <ErrorState message={list.error.message} onRetry={list.reload} />}
 
+      {(selected.size > 0 || exportError) && (
+        <div className="flex flex-wrap items-center gap-2 rounded-md border border-accent/40 bg-accent-wash px-3 py-2 text-[13px] text-accent-ink" role="status">
+          <span className="font-medium">{fmtNumber(selected.size)} merchant dipilih</span>
+          <Button size="sm" onClick={exportSelected} loading={exporting} disabled={selected.size === 0}>
+            {!exporting && <Download aria-hidden className="size-3.5" />} Unduh Excel
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => setSelected(new Map())}>Kosongkan pilihan</Button>
+          {exportError && <span className="text-critical-ink">{exportError}</span>}
+        </div>
+      )}
+
       {!data && !list.error && <ListSkeleton />}
 
       {data && (
@@ -128,8 +173,8 @@ export function MerchantListView({ branch }: { branch?: string } = {}) {
             </Card>
           ) : (
             <>
-              <MerchantTable items={data.items} today={data.today} sort={data.sort} dir={data.dir} onSort={setSort} configured={data.usak_configured} source={data.usak_source} branch={branch} />
-              <MerchantCards items={data.items} today={data.today} configured={data.usak_configured} source={data.usak_source} branch={branch} />
+              <MerchantTable selected={selected} toggle={toggle} setMany={setMany} items={data.items} today={data.today} sort={data.sort} dir={data.dir} onSort={setSort} configured={data.usak_configured} source={data.usak_source} branch={branch} />
+              <MerchantCards selected={selected} toggle={toggle} items={data.items} today={data.today} configured={data.usak_configured} source={data.usak_source} branch={branch} />
               <Pagination data={data} update={update} />
             </>
           )}
@@ -353,7 +398,10 @@ function cell(m: MerchantListItem, key: string, today: string, configured: boole
   }
 }
 
-function MerchantTable({ items, today, sort, dir, onSort, configured, source, branch }: {
+function MerchantTable({ items, today, sort, dir, onSort, configured, source, branch, selected, toggle, setMany }: {
+  selected: Map<string, MerchantListItem>;
+  toggle: (m: MerchantListItem) => void;
+  setMany: (items: MerchantListItem[], on: boolean) => void;
   items: MerchantListItem[];
   today: string;
   sort: string;
@@ -370,6 +418,15 @@ function MerchantTable({ items, today, sort, dir, onSort, configured, source, br
       <table className={tableCls.table}>
         <thead>
           <tr className={tableCls.headRow}>
+            <th scope="col" className={cx(tableCls.th, "w-9 bg-surface-2")}>
+              <input
+                type="checkbox"
+                aria-label="Pilih semua merchant di halaman ini"
+                checked={items.length > 0 && items.every((m) => selected.has(m.store_id))}
+                onChange={(e) => setMany(items, e.target.checked)}
+                className="size-4 accent-[var(--btn)]"
+              />
+            </th>
             {columns.map((c) => {
               const active = c.sort === sort;
               return (
@@ -392,7 +449,16 @@ function MerchantTable({ items, today, sort, dir, onSort, configured, source, br
         </thead>
         <tbody>
           {items.map((m) => (
-            <tr key={m.store_id} className={cx("group", tableCls.row)}>
+            <tr key={m.store_id} className={cx("group", tableCls.row, selected.has(m.store_id) && "bg-accent-wash/50")}>
+              <td className={cx(tableCls.td, "w-9 align-top")}>
+                <input
+                  type="checkbox"
+                  aria-label={`Pilih ${m.store_name || m.mid_static}`}
+                  checked={selected.has(m.store_id)}
+                  onChange={() => toggle(m)}
+                  className="mt-0.5 size-4 accent-[var(--btn)]"
+                />
+              </td>
               {columns.map((c) => (
                 <td
                   key={c.key}
@@ -415,12 +481,16 @@ function MerchantTable({ items, today, sort, dir, onSort, configured, source, br
   );
 }
 
-function MerchantCards({ items, today, configured, source, branch }: { items: MerchantListItem[]; today: string; configured: boolean; source: string; branch?: string }) {
+function MerchantCards({ items, today, configured, source, branch, selected, toggle }: { selected: Map<string, MerchantListItem>; toggle: (m: MerchantListItem) => void; items: MerchantListItem[]; today: string; configured: boolean; source: string; branch?: string }) {
   return (
     <ul className="divide-y divide-line overflow-hidden rounded-md border border-line bg-surface md:hidden">
       {items.map((m) => (
-        <li key={m.store_id}>
-          <Link href={detailHref(m.store_id, branch)} className="block px-4 py-3 active:bg-surface-2">
+        <li key={m.store_id} className={cx("flex items-start", selected.has(m.store_id) && "bg-accent-wash/50")}>
+          <label className="flex shrink-0 cursor-pointer items-start py-3.5 pl-4">
+            <span className="sr-only">Pilih {m.store_name || m.mid_static}</span>
+            <input type="checkbox" checked={selected.has(m.store_id)} onChange={() => toggle(m)} className="size-4 accent-[var(--btn)]" />
+          </label>
+          <Link href={detailHref(m.store_id, branch)} className="block min-w-0 flex-1 px-3 py-3 active:bg-surface-2">
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
                 <p className="truncate font-medium text-ink">{m.store_name || m.mid_static || m.store_id}</p>

@@ -192,7 +192,7 @@ function regionSummary_(ctx) {
 
   var warnings = configWarnings_(cfg);
   if (scope.branches.length && withSummary < scope.branches.length) {
-    warnings.push({ code: 'SUMMARY_STALE', message: 'Ringkasan performa belum lengkap untuk ' + (scope.branches.length - withSummary) + ' cabang. Admin perlu menjalankan "Bangun indeks cabang".' });
+    warnings.push({ code: 'SUMMARY_STALE', message: 'Ringkasan performa belum lengkap untuk ' + (scope.branches.length - withSummary) + ' cabang. Admin perlu menjalankan "Bangun ringkasan performa cabang".' });
   }
   if (!scope.branches.length) {
     warnings.push({ code: 'NO_BRANCHES', message: 'Belum ada cabang di cakupan Anda. Admin perlu menjalankan "Bangun indeks cabang" dan memeriksa sheet Wilayah.' });

@@ -1079,6 +1079,7 @@ describe('ringkasan performa area/region', () => {
   test('region.summary memuat metrik, dana, dan komposisi grading gabungan cabang', () => {
     const ctx = setup();
     const { rt, call } = ctx;
+    rt.run('buildBranchSummary_');
     rt.run('prepareWilayahSheet_');
     const w = rt.spreadsheet.getSheetByName('Wilayah');
     const header = w.getRange(1, 1, 1, w.getLastColumn()).getValues()[0];
@@ -1107,6 +1108,7 @@ describe('ringkasan performa area/region', () => {
     assert.equal(grading.reduce((s, g) => s + g.count, 0), all.length);
     assert.ok(grading.every((g) => g.kategori));
     assert.equal(r.data.usak.source_column, 'grading_trx');
+    assert.ok(!r.data.warnings.some((x) => x.code === 'SUMMARY_STALE'));
     const ct = r.data.grading_trx_x_tiering;
     assert.equal(ct.cells.flat().reduce((s, n) => s + n, 0), all.length);
     assert.ok(ct.rows.length > 0 && ct.cols.length > 0);

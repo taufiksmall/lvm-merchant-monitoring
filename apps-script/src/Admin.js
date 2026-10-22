@@ -28,6 +28,7 @@ function onOpen() {
       .addItem('Validasi sheet Merchants (langsung)', 'validateMerchantsSheet')
       .addItem('Urutkan Merchants per cabang', 'sortMerchantsByBranch')
       .addItem('Bangun indeks cabang', 'buildBranchIndex')
+      .addItem('Bangun ringkasan performa cabang', 'buildBranchSummary')
       .addItem('Siapkan sheet Wilayah (area & region)', 'prepareWilayahSheet')
       .addItem('Buat akun area dan region', 'createRegionAreaAccounts')
       .addItem('Ukur waktu muat cabang…', 'measureBranchLoad')
@@ -736,9 +737,6 @@ function buildBranchIndex_() {
   var namas = colValues('nama_cabang_final');
   var areas = colValues('nama_area_final');
   var grades = colValues(cfg.usak.source);
-  var tiers = colValues('Tiering');
-  // Metrik performa & dana per cabang (jumlah dan banyak data), untuk tampilan area/region.
-  var metricCols = PERFORMANCE_METRICS.map(function (name) { return { name: name, values: colValues(name) }; });
   var kategoriMemo = {};
   var runs = {}, order = [], prev = null, summary = {};
   for (var i = 0; i < kodes.length; i++) {
@@ -753,21 +751,7 @@ function buildBranchIndex_() {
       runs[k][runs[k].length - 1].end = row;
     }
     var sm = summary[k];
-    if (!sm) sm = summary[k] = { nama: '', area: '', usak: 0, belum: 0, dicek: 0, sums: {}, counts: {}, grades: {}, cross: {} };
-    for (var mc = 0; mc < metricCols.length; mc++) {
-      if (!metricCols[mc].values) continue;
-      var nv = toNumber_(metricCols[mc].values[i][0]);
-      if (nv !== null) {
-        var mn = metricCols[mc].name;
-        sm.sums[mn] = (sm.sums[mn] || 0) + nv;
-        sm.counts[mn] = (sm.counts[mn] || 0) + 1;
-      }
-    }
-    var gv = grades ? str_(grades[i][0]) : '';
-    sm.grades[gv] = (sm.grades[gv] || 0) + 1;
-    var tv = tiers ? str_(tiers[i][0]) : '';
-    var gx = sm.cross[gv] || (sm.cross[gv] = {});
-    gx[tv] = (gx[tv] || 0) + 1;
+    if (!sm) sm = summary[k] = { nama: '', area: '', usak: 0, belum: 0, dicek: 0 };
     if (!sm.nama && namas) sm.nama = str_(namas[i][0]);
     if (!sm.area && areas) sm.area = str_(areas[i][0]);
     var raw = grades ? grades[i][0] : '';
@@ -784,7 +768,7 @@ function buildBranchIndex_() {
     var rs = runs[order[i]];
     if (rs.length !== 1) { split.push(order[i] + ' (' + rs.length + ' blok)'); continue; }
     var smy = summary[order[i]];
-    out.push([order[i], rs[0].start, rs[0].end, rs[0].end - rs[0].start + 1, stamp, smy.nama, smy.area, smy.usak, smy.belum, smy.dicek, JSON.stringify({ s: smy.sums, c: smy.counts, g: smy.grades, x: smy.cross })]);
+    out.push([order[i], rs[0].start, rs[0].end, rs[0].end - rs[0].start + 1, stamp, smy.nama, smy.area, smy.usak, smy.belum, smy.dicek, '']);
     total += rs[0].end - rs[0].start + 1;
   }
   var idxSheet = getSheet_(SHEETS.BRANCH_INDEX, true) || getSpreadsheet_().insertSheet(SHEETS.BRANCH_INDEX);
@@ -1033,4 +1017,74 @@ function clearAppCache() {
     bumpVersion_('USERS_VERSION');
     return ['Cache data, follow-up, akun & konfigurasi dikosongkan. Perubahan sheet langsung terlihat di aplikasi.'];
   });
+}
+
+/**
+ * Hitung ringkasan performa per cabang (jumlah metrik & dana, sebaran grading, silang grading x Tiering) dan
+ * simpan di kolom `ringkasan` BranchIndex. Bertahap: hanya memproses cabang yang ringkasannya masih kosong
+ * dan berhenti sebelum batas waktu Apps Script; jalankan lagi sampai "Sisa: 0". Membaca per blok cabang
+ * (bukan seluruh kolom), jadi ringan. Indeks yang dibangun ulang mengosongkan ringkasan.
+ */
+function buildBranchSummary() {
+  return runAdmin_('Bangun ringkasan performa cabang', buildBranchSummary_);
+}
+
+function buildBranchSummary_() {
+  var started = new Date().getTime();
+  var budgetMs = 240000;
+  var cfg = loadConfig_();
+  var sheet = getSheet_(SHEETS.MERCHANTS);
+  var info = readHeaderInfo_(sheet, MERCHANT_COLUMNS);
+  assertHeaders_(SHEETS.MERCHANTS, info, ['kode_cabang_final']);
+  var metricNames = PERFORMANCE_METRICS.filter(function (m) { return info.index[m] !== undefined; });
+  var names = ['kode_cabang_final', cfg.usak.source, 'Tiering'].concat(metricNames);
+  var cols = names.filter(function (n) { return info.index[n] !== undefined; }).map(function (n) { return info.index[n]; });
+  var minCol = Math.min.apply(null, cols), maxCol = Math.max.apply(null, cols);
+  var at = function (rowVals, name) { return info.index[name] === undefined ? '' : rowVals[info.index[name] - minCol]; };
+
+  var idxSheet = getSheet_(SHEETS.BRANCH_INDEX, true);
+  if (!idxSheet) throw new AppError('VALIDATION_ERROR', 'Sheet BranchIndex belum ada. Jalankan "Bangun indeks cabang" dulu.');
+  ensureHeaders_(idxSheet, SHEET_SCHEMAS.BranchIndex);
+  var head = idxSheet.getRange(1, 1, 1, idxSheet.getLastColumn()).getValues()[0];
+  var col = function (name) { return head.indexOf(name); };
+  var cKode = col('kode_cabang'), cStart = col('baris_awal'), cEnd = col('baris_akhir'), cSum = col('ringkasan');
+  var last = idxSheet.getLastRow();
+  if (last < 2) throw new AppError('VALIDATION_ERROR', 'BranchIndex kosong. Jalankan "Bangun indeks cabang" dulu.');
+  var data = idxSheet.getRange(2, 1, last - 1, idxSheet.getLastColumn()).getValues();
+  var pad = cfg.settings.KODE_CABANG_PAD_LENGTH;
+
+  var done = 0, remaining = 0, skipped = 0, stoppedEarly = false;
+  for (var i = 0; i < data.length; i++) {
+    var rec = data[i];
+    if (str_(rec[cSum]) !== '') continue;
+    if (new Date().getTime() - started > budgetMs) { stoppedEarly = true; remaining++; continue; }
+    var kode = normKode_(rec[cKode], pad), start = Number(rec[cStart]), end = Number(rec[cEnd]);
+    if (!kode || !(start >= 2) || !(end >= start)) { skipped++; continue; }
+    var block = sheet.getRange(start, minCol + 1, end - start + 1, maxCol - minCol + 1).getValues();
+    var sums = {}, counts = {}, grades = {}, cross = {}, valid = true;
+    for (var r = 0; r < block.length; r++) {
+      var row = block[r];
+      if (normKode_(at(row, 'kode_cabang_final'), pad) !== kode) { valid = false; break; }
+      for (var m = 0; m < metricNames.length; m++) {
+        var raw = at(row, metricNames[m]);
+        var v = typeof raw === 'number' ? raw : toNumber_(raw);
+        if (v !== null) {
+          sums[metricNames[m]] = (sums[metricNames[m]] || 0) + v;
+          counts[metricNames[m]] = (counts[metricNames[m]] || 0) + 1;
+        }
+      }
+      var g = str_(at(row, cfg.usak.source)), t = str_(at(row, 'Tiering'));
+      grades[g] = (grades[g] || 0) + 1;
+      var gx = cross[g] || (cross[g] = {});
+      gx[t] = (gx[t] || 0) + 1;
+    }
+    if (!valid) { skipped++; continue; } // indeks tidak cocok dengan data: bangun ulang indeks
+    idxSheet.getRange(i + 2, cSum + 1).setValue(JSON.stringify({ s: sums, c: counts, g: grades, x: cross }));
+    done++;
+  }
+  bumpVersion_('DATA_VERSION');
+  var lines = [done + ' cabang diringkas.'];
+  if (skipped) lines.push(skipped + ' cabang dilewati (indeks tidak cocok dengan data). Jalankan "Bangun indeks cabang" lalu ulangi.');
+  lines.push('Sisa: ' + remaining + (stoppedEarly ? ' — waktu habis, jalankan menu ini lagi untuk melanjutkan.' : '.'));
+  return lines;
 }

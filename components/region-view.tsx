@@ -3,7 +3,7 @@
 import { ChevronRight, Search } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { fmtDateTime, fmtNumber, fmtPercent } from "@/lib/format";
+import { fmtDate, fmtNumber, fmtPercent } from "@/lib/format";
 import { useApi } from "@/lib/client/use-api";
 import type { RegionBranch, RegionSearch, RegionSummary } from "@/lib/types";
 import { UsakBadge } from "./badges";
@@ -75,7 +75,6 @@ export function RegionView() {
   const u = data.usak;
   const jenis = data.cakupan.jenis === "region" ? "Region" : "Area";
   const showArea = data.cakupan.areas.length > 1;
-  const stamp = data.data.diperbarui ? fmtDateTime(data.data.diperbarui) : "";
 
   return (
     <div className={cx("space-y-4 transition-opacity", loading && "opacity-60")} aria-busy={loading}>
@@ -84,7 +83,7 @@ export function RegionView() {
         subtitle={
           <span>
             {data.cakupan.nama} · {fmtNumber(data.cabang_total)} cabang
-            {stamp && <span className="text-muted"> · data per indeks {stamp}</span>}
+            {data.data.snapshot_date && <> · <strong className="font-semibold text-ink">Posisi data LVM: {fmtDate(data.data.snapshot_date)}</strong></>}
           </span>
         }
         action={<ReloadButton onClick={reload} loading={loading} />}
